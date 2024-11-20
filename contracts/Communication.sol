@@ -10,6 +10,8 @@ contract CommunicationContract is Ownable {
     event OutboundMessage(address indexed targetContract, bytes message);
 
     mapping(bytes32 => bool) public processedMessages; // Tracks processed incoming messages
+    // TODO change to a FIFO cue, where only last message processed and the last messages unprocessed are stored, and after oe is processes it pops out
+    
     uint256 public messageFee; // Fee for sending messages
 
     constructor(uint256 _messageFee) Ownable(msg.sender) {
@@ -29,16 +31,17 @@ contract CommunicationContract is Ownable {
      * @param message The message to process.
      */
     function receiveMessage(bytes calldata message) external payable {
-        require(msg.value >= messageFee, "Insufficient fee");
+        require(msg.value >= messageFee, "Insufficient fee"); //TODO remove this, let relayers check if fee is sufficient, otherwise discard msg
         bytes32 messageHash = keccak256(message);
         require(!processedMessages[messageHash], "Message already processed");
 
         processedMessages[messageHash] = true;
+        
         emit MessageReceived(msg.sender, message, messageHash);
     }
 
     /**
-     * @dev Sends a message to an external chain or relayer.
+     * @dev Sends a message cross-chain to an external chain or relayer.
      * @param message The message to send.
      */
     function sendMessage(bytes calldata message) external payable {
@@ -56,7 +59,7 @@ contract CommunicationContract is Ownable {
         bytes calldata message,
         bytes32[] calldata proof,
         bytes32 root
-    ) external view returns (bool) {
+    ) public view returns (bool) {
         bytes32 messageHash = keccak256(message);
         return MerkleProof.verify(proof, root, messageHash);
     }
@@ -66,8 +69,16 @@ contract CommunicationContract is Ownable {
      * @param targetContract The target contract's address.
      * @param message The message to send.
      */
-    function forwardMessage(address targetContract, bytes calldata message) external {
+     function forwardMessage(
+        address targetContract,
+        bytes calldata message,
+        bytes32[] calldata proof,
+        bytes32 root
+    ) external {
         require(targetContract != address(0), "Invalid target address");
+
+        // Verify the Merkle proof before forwarding
+        require(verifyMessage(message, proof, root), "Invalid Merkle proof");
 
         // Call the target contract's function to handle the message
         (bool success, ) = targetContract.call(abi.encodeWithSignature("handleMessage(bytes)", message));
@@ -75,4 +86,6 @@ contract CommunicationContract is Ownable {
 
         emit OutboundMessage(targetContract, message);
     }
+
+    //TODO pay Relayer function
 }
