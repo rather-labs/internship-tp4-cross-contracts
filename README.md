@@ -2,12 +2,12 @@
 
 In this project we develop a cross blockchain communication protocol. In this repo we have the blockchain related files. Also, we have the contracts.
 
-
-# CommunicationContract
+# CommunicationContracts
 
 ## Overview
 
-The `CommunicationContract` is a Solidity smart contract designed to facilitate cross-chain and on-chain communication. It can handle:
+The `CommunicationContracts` are two Solidity smart contracts designed to facilitate cross-chain and on-chain communication. they can handle:
+
 - Receiving messages from other contracts on the same chain.
 - Sending messages cross-chain to relayers or external chains.
 - Verifying Merkle proofs for incoming messages from external sources.
@@ -15,6 +15,7 @@ The `CommunicationContract` is a Solidity smart contract designed to facilitate 
 - Tracking processed messages to avoid duplication.
 
 This contract also supports configurable message fees, ensuring flexible and incentivized usage.
+It also suuports fee updates of previously sent but undelivered messages.
 
 ## Features
 
@@ -24,30 +25,33 @@ This contract also supports configurable message fees, ensuring flexible and inc
 - **Forward Messages:** Allows forwarding messages to other on-chain contracts after verifying their authenticity.
 - **Configurable Fees:** The owner can set and update message fees for sending and receiving operations.
 - **Processed Message Tracking:** Maintains a record of processed messages to prevent reprocessing.
+- **Delivered Message Tracking:** Maintains a record of delivered messages to allow pay to the correct relayer.
+- **Allow for taxi/bus delivery confirmation:** To receive the confirmation of message delivery a taxi/bus
+  option is defined per message with an associated differentiated fee. This allows for asap message
+  delivery confirmation or to include it in a pool of confirmed messages for gas saving.
 
 ## Events
 
-- **`MessageReceived(address sender, bytes message, bytes32 messageHash)`**
-  - Emitted when a message is received from another contract on the same chain.
-  
-- **`MessageSent(address receiver, bytes message)`**
+- **`InboundMessage(address relayer, uint256 sourceBC, uint256 messageNumber)`**
+  - Emitted when a message is received from outside the blockchain.
+- **`OutboundMessage(bytes data, address sender, address receiver, uint256 destinationBC, uint256 fee, uint16 finalityNBlocks, uint256 messageNumber, bool taxi)`**
   - Emitted when a message is sent to a cross-chain relayer or external chain.
-  
-- **`OutboundMessage(address targetContract, bytes message)`**
-  - Emitted when a message is forwarded to another contract on the same chain.
 
 ## Functions
 
 ### Core Functions
 
 - `receiveMessage(bytes calldata message)`
+
   - Receives a message from other contracts within the same chain.
   - Ensures the message hasn't been processed before.
 
 - `sendMessage(bytes calldata message)`
+
   - Emits an event indicating the intent to send a cross-chain message.
 
 - `verifyMessage(bytes calldata message, bytes32[] calldata proof, bytes32 root)`
+
   - Verifies a Merkle proof to authenticate a message.
   - Returns `true` if the proof is valid.
 
@@ -65,6 +69,7 @@ This contract also supports configurable message fees, ensuring flexible and inc
 ### Deployment
 
 1. Install the required OpenZeppelin contracts:
+
    ```bash
    npm install @openzeppelin/contracts
    ```
@@ -78,16 +83,19 @@ This contract also supports configurable message fees, ensuring flexible and inc
 ### Interacting with the Contract
 
 - **Receiving Messages:**
+
   ```solidity
   contract.receiveMessage{value: messageFee}(message);
   ```
 
 - **Sending Messages:**
+
   ```solidity
   contract.sendMessage{value: messageFee}(message);
   ```
 
 - **Forwarding Messages:**
+
   ```solidity
   contract.forwardMessage(targetContract, message, proof, root);
   ```
@@ -100,6 +108,7 @@ This contract also supports configurable message fees, ensuring flexible and inc
 ### Events
 
 Listen to contract events using tools like Ethers.js or Web3.js to track activity:
+
 ```javascript
 contract.on("MessageReceived", (sender, message, messageHash) => {
   console.log(`Message received from ${sender}:`, message);
@@ -117,6 +126,19 @@ contract.on("MessageSent", (receiver, message) => {
 - **Gas Optimization:** Avoid sending large messages to reduce gas costs.
 - **Security:** Ensure the Merkle root and proofs are securely generated and transmitted.
 
+### Two chain setup to test communication bridge
+
+```shell
+npx hardhat node --port 8545
+npx hardhat ignition deploy ./ignition/modules/Communication.ts --network localhost --reset
+npx hardhat run .\scripts\emitMsg.ts --network localhost
+npx hardhat run .\scripts\contracts.ts --network localhost
+npx hardhat node --port 8546 --config ./hardhat2.config.ts
+npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat2.config.ts
+npx hardhat run .\scripts\contracts.ts --network localhost --config ./hardhat2.config.ts
+npx hardhat run .\scripts\emitMsg.ts --network localhost --config ./hardhat2.config.ts
+```
+
 ## TODO
 
 - Implement a FIFO queue for tracking messages to manage storage efficiently.
@@ -125,5 +147,7 @@ contract.on("MessageSent", (receiver, message) => {
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.
+
 ```
 
+```
