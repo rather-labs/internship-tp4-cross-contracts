@@ -7,7 +7,62 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
 
+interface IVerification {
+    /**
+     * @notice Log information required to verify proof
+     */
+    struct Log {
+        address eventAddress;
+        bytes data;
+        bytes[] topic;
+    }
+    /**
+     * @notice Receipt information required to validate proof
+     */
+    struct Receipt {
+        string status;
+        string txType;
+        uint256 cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+    }
+
+    function verifyFinality(
+        uint256 _blockchain,
+        uint256 _finalityBlock
+    ) external view returns (bool);
+
+    function verifyMessage(
+        Receipt calldata _receipt,
+        uint256 _sourceBC,
+        uint256 _destinationBC,
+        uint256 _messageNumber,
+        uint256 _receiptBlockNumber,
+        bytes32[] calldata proof
+    ) external view returns (bool);
+}
+
 contract OutgoingCommunication is Ownable {
+    address public verificationContractAddress;
+
+    /**
+     * @notice Log information required to verify proof
+     */
+    struct Log {
+        address eventAddress;
+        bytes data;
+        bytes[] topic;
+    }
+    /**
+     * @notice Receipt information required to validate proof
+     */
+    struct Receipt {
+        string status;
+        string txType;
+        uint256 cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+    }
     /**
      * @notice Status for outgoing messaages
      */
@@ -79,23 +134,6 @@ contract OutgoingCommunication is Ownable {
      */
     mapping(uint256 => address) public destAddresesPerChainId;
 
-    /**
-     * @notice Tracks receipt trie root per source blockchain and blocknumber
-     */
-    mapping(uint256 => mapping(uint256 => bytes32))
-        public recTrieRootPerChainIdAndBlocknumber;
-
-    /**
-     * @notice Tracks log data per source blockchhain and message number
-     */
-    mapping(uint256 => mapping(uint256 => bytes))
-        public logDataPerChainIdAndMsgNumber;
-
-    /**
-     * @notice Tracks blocknumber data per source blockchhain
-     */
-    mapping(uint256 => uint256) public blocknumberPerChainId;
-
     constructor(
         uint256[] memory _blockChainIds,
         address[] memory _blockChainAddresses
@@ -103,11 +141,6 @@ contract OutgoingCommunication is Ownable {
         for (uint i = 0; i < _blockChainIds.length; i++) {
             destAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[i];
         }
-    }
-
-    modifier onlyOracles() {
-        require(allowedOracles[msg.sender], "Oracle not authorized");
-        _;
     }
 
     /* BRIDGE FUNCTIONS */
@@ -197,10 +230,13 @@ contract OutgoingCommunication is Ownable {
      * @param _messageNumber Message number.
      */
     function payRelayer(
+        Receipt calldata _receipt,
         bytes32[] calldata _proof,
         uint256 _destinationBC,
         uint256 _messageNumber
     ) external payable {
+        // Calls verification contract
+        IVerification verification = IVerification(verificationContractAddress);
         // Check finality
         //require(
         //    logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
@@ -214,12 +250,12 @@ contract OutgoingCommunication is Ownable {
 
         // Verify the Merkle proof before forwarding
         require(
-            verifyMessage(
+            verification.verifyMessage(
                 _destinationBC,
                 _messageNumber,
                 _proof,
-                recTrieRootPerChainIdAndBlocknumber[_destinationBC][
-                    _messageNumber
+
+                _messageNumber
                 ]
             ),
             "Invalid Merkle proof"
@@ -236,88 +272,12 @@ contract OutgoingCommunication is Ownable {
         //}
     }
 
-    /**
-     * @notice Verifies a Merkle proof for an incoming message from an external source.
-     * @param proof The Merkle proof.
-     * @param root The Merkle root.
-     */
-    function verifyMessage(
-        uint256 _sourceBC,
-        uint256 _messageNumber,
-        bytes32[] calldata proof,
-        bytes32 root
-    ) private view returns (bool) {
-        bytes32 messageHash = keccak256(
-            logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-        );
-        return MerkleProof.verify(proof, root, messageHash);
-    }
-
     /* ENDPOINT MAINTAINANCE FUNCTIONS */
 
-    /*
-     * @notice Modifies which addresses can act as Oracles.
-     * @param _oracleAddress blockchain identification.
-     * @param isAllowed blockchain number.
-     */
-    function modifyOracleAddresses(
-        address _oracleAddress,
-        bool isAllowed
-    ) public onlyOwner {
-        allowedOracles[_oracleAddress] = isAllowed;
-        console.log(allowedOracles[_oracleAddress]);
-    }
-
-    // TODO: pay Relayer function (check message delivery)
     // TODO: Function to add new supported BCs (require contract owner)
     // TODO: Function to deposit/withdraw funds from contract (require contract owner)
     // TODO: Function to change destination blockchain addresses (require contract owner)
     // TODO: Add proof verification to test message reception events
-
-    /* ORACLE FUNCTIONS */
-
-    /**
-     * @notice Sets message log per blockchain id and message number.
-     * @param _blockchain Blockchain identification.
-     * @param _messageNumber Message number.
-     * @param _logData Log data for the msg emission event.
-     */
-    function setMsgLog(
-        uint256 _blockchain,
-        uint256 _messageNumber,
-        bytes memory _logData
-    ) public onlyOracles {
-        logDataPerChainIdAndMsgNumber[_blockchain][_messageNumber] = _logData;
-    }
-
-    /**
-     * @notice Sets receipt trie root per blockchain and blocknumber.
-     * @param _blockchain Blockchain identification.
-     * @param _blocknumber Message number.
-     * @param _recTrieRoot Log data for the msg emission event.
-     */
-    function setRecTrieRoot(
-        uint256 _blockchain,
-        uint256 _blocknumber,
-        bytes32 _recTrieRoot
-    ) public onlyOracles {
-        recTrieRootPerChainIdAndBlocknumber[_blockchain][
-            _blocknumber
-        ] = _recTrieRoot;
-    }
-
-    /**
-     * @notice Sets last confirmed block of the blockchain.
-     * @param _blockchain blockchain identification.
-     * @param _blocknumber blockchain number.
-     */
-    function setLastBlock(
-        uint256 _blockchain,
-        uint256 _blocknumber
-    ) public onlyOracles {
-        console.log(_blockchain, _blocknumber);
-        blocknumberPerChainId[_blockchain] = _blocknumber;
-    }
 
     /**
      * @notice Sets belance from address.
