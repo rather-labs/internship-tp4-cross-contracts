@@ -5,16 +5,18 @@ import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
 
 // 31337 - Localhost 1
-// 31337 - Localhost 2 (couldn't make it work with differnt chain id)
+// 31338 - Localhost 2
 // 1  - Ethereum Mainnet logo
 // 56 - BNB Smart Chain Mainnet
 // 11155111 - Sepolia Testnet
 // 421614 - Arbitrum sepolia Testnet
 const CHAIN_IDS: bigint[] = [
-  31337n,  // Two hardhat BC with the same data
+  31337n, 
+  31338n, 
 ];
-const CHAIN_ADDRESSES: string[] = [
-  "0x5FbDB2315678afecb367f032d93F642f64180aa3", // Two hardhat BC with the same data
+const CHAIN_ADDRESSES: string[] = [ // Incoming communication contracts
+  "0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312", 
+  "0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312", 
 ];
 const ONE_GWEI: bigint = parseEther("1");
 
