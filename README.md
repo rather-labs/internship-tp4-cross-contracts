@@ -141,6 +141,30 @@ npx hardhat run .\scripts\contracts.ts --network localhost --config ./hardhat2.c
 npx hardhat run .\scripts\emitMsg.ts --network localhost --config ./hardhat2.config.ts
 ```
 
+### Closed communication loop
+
+First start the nodes in different terminals
+
+```shell
+npx hardhat node --port 8545
+```
+
+```shell
+npx hardhat node --port 8546 --config ./hardhat2.config.ts
+```
+
+Then run all these scripts in this order.
+Addresses and txHash are hardcoded so they
+must be run immediatly after node startup
+
+```shell
+npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset
+npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat2.config.ts
+npx hardhat run .\scripts\emitMsg.ts --network localhost
+npx hardhat run .\scripts\recieveMsg.ts --network localhost  --config ./hardhat2.config.ts
+npx hardhat run .\scripts\payMsg.ts --network localhost
+```
+
 ## TODO
 
 - Implement a FIFO queue for tracking messages to manage storage efficiently.

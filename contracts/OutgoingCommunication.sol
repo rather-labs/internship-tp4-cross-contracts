@@ -31,7 +31,8 @@ interface IVerification {
 }
 
 contract OutgoingCommunication is Ownable {
-    address public verificationContractAddress;
+    address verificationContractAddress =
+        0xAB8Eb9F37bD460dF99b11767aa843a8F27FB7A6e;
 
     /**
      * @notice Status for outgoing messaages
@@ -240,10 +241,10 @@ contract OutgoingCommunication is Ownable {
                 ] = 0;
                 (bool success, ) = _relayerAddress.call{value: feeToPay}("");
                 if (!success) {
-                    revert("Call failed");
                     msgFeePerDestChainIdAndNumber[_destinationBC][
                         _messagesDelivered.messageNumbers[i]
                     ] = feeToPay;
+                    revert("Call failed");
                 }
             }
         }

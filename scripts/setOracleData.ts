@@ -39,7 +39,7 @@ async function main() {
         account: firstWalletClient.account
       } );
     
-    // setMsgLog
+    // setMsgHsh
     await contract.write.setMsgLog(
       [
         destBlockchain.get(chainId)?? 0n,
@@ -50,6 +50,9 @@ async function main() {
         account: firstWalletClient.account
       } 
     );
+
+    
+    // setMsgDeliveredHash
 
     
     // setRecTrieRoot    

@@ -141,11 +141,9 @@ contract Verification is Ownable {
             abi.encode(
                 _message.data,
                 _message.sender,
-                _message.destinationBC,
                 _message.receiver,
                 _message.finalityNBlocks,
                 _message.messageNumber,
-                _message.taxi,
                 _sourceBC,
                 _sourceBlockNumber
             )

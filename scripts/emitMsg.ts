@@ -33,10 +33,10 @@ async function main() {
           { name: 'sender', type: 'address', indexed: false },
           { name: 'receiver', type: 'address', indexed: false },
           { name: 'destinationBC', type: 'uint256', indexed: false },
-          { name: 'fee', type: 'uint256', indexed: false },
           { name: 'finalityNBlocks', type: 'uint16', indexed: false },
           { name: 'messageNumber', type: 'uint256', indexed: false },
           { name: 'taxi', type: 'bool', indexed: false },
+          { name: 'fee', type: 'uint256', indexed: false },
         ],
       },
     ];

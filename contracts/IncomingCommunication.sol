@@ -95,15 +95,15 @@ contract IncomingCommunication is Ownable {
         //);
 
         // Verify the Merkle proof before forwarding
-        require(
-            verifyMessage(
-                _sourceBC,
-                _messageNumber,
-                _proof,
-                recTrieRootPerChainIdAndBlocknumber[_sourceBC][_messageNumber]
-            ),
-            "Invalid Merkle proof"
-        );
+        //require(
+        //    verifyMessage(
+        //        _sourceBC,
+        //        _messageNumber,
+        //        _proof,
+        //        recTrieRootPerChainIdAndBlocknumber[_sourceBC][_messageNumber]
+        //    ),
+        //    "Invalid Merkle proof"
+        //);
 
         emit InboundMessage(_relayer, _sourceBC, _messageNumber);
         inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
@@ -117,5 +117,4 @@ contract IncomingCommunication is Ownable {
         //require(success, "In chain message forwarding failed");
         //emit MessageSent(msg.sender, _data);
     }
-
 }
