@@ -25,7 +25,9 @@ contract Verification is Ownable {
         uint256 cumulativeGasUsed;
         bytes logsBloom;
         Log[] logs;
-        address receiptAddress;
+        uint256 recChainId;
+        uint256 recBlockNumber;
+        address recAddress;
     }
 
     /**
@@ -80,29 +82,16 @@ contract Verification is Ownable {
 
     /**
      * @notice Verifies a Merkle proof for an incoming message from an external source.
-     * @param _sourceBC Source blockchain of the message to be verified.
-     * @param _destinationBC Source blockchain of the message to be verified.
-     * @param _messageNumber The Merkle proof.
-     * @param _receiptBlockNumber Blocknumber of the receipt to be verified.
-     * @param proof The Merkle proof.
+     * @param _receipt Blocknumber of the receipt to be verified.
+     * @param _proof The Merkle proof.
      */
     function verifyMessage(
         Receipt calldata _receipt,
-        uint256 _sourceBC,
-        uint256 _destinationBC,
-        uint256 _messageNumber,
-        uint256 _receiptBlockNumber,
-        bytes32[] calldata proof
+        bytes32[] calldata _proof
     ) public view returns (bool) {
-        uint256 _receiptBC;
-        if (_sourceBC == block.chainid) {
-            _receiptBC = _destinationBC;
-        } else {
-            _receiptBC = _sourceBC;
-        }
         // check that endpoint address is allowed
         require(
-            addressesPerChainId[_receiptBC][_receipt.receiptAddress],
+            addressesPerChainId[_receipt.recChainId][_receipt.recAddress],
             "Event from an unauthorized endpoint"
         );
 
@@ -111,9 +100,9 @@ contract Verification is Ownable {
 
         return
             MerkleProof.verify(
-                proof,
-                recTrieRootPerChainIdAndBlocknumber[_receiptBC][
-                    _receiptBlockNumber
+                _proof,
+                recTrieRootPerChainIdAndBlocknumber[_receipt.recChainId][
+                    _receipt.recBlockNumber
                 ],
                 encodedReceipt
             );
@@ -152,7 +141,7 @@ contract Verification is Ownable {
      */
     function modifyEndPoints(
         uint256 _blockChainNumber,
-        uint256 _address,
+        address _address,
         bool _isAllowed
     ) public onlyOwner {
         addressesPerChainId[_blockChainNumber][_address] = _isAllowed;

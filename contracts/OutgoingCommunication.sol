@@ -25,6 +25,9 @@ interface IVerification {
         uint256 cumulativeGasUsed;
         bytes logsBloom;
         Log[] logs;
+        uint256 recChainId;
+        uint256 recBlockNumber;
+        address recAddress;
     }
 
     function verifyFinality(
@@ -34,11 +37,7 @@ interface IVerification {
 
     function verifyMessage(
         Receipt calldata _receipt,
-        uint256 _sourceBC,
-        uint256 _destinationBC,
-        uint256 _messageNumber,
-        uint256 _receiptBlockNumber,
-        bytes32[] calldata proof
+        bytes32[] calldata _proof
     ) external view returns (bool);
 }
 
@@ -62,6 +61,9 @@ contract OutgoingCommunication is Ownable {
         uint256 cumulativeGasUsed;
         bytes logsBloom;
         Log[] logs;
+        uint256 recChainId;
+        uint256 recBlockNumber;
+        address recAddress;
     }
     /**
      * @notice Status for outgoing messaages
@@ -225,6 +227,7 @@ contract OutgoingCommunication is Ownable {
 
     /**
      * @notice Transfer fees to the relayer that forwarded the message.
+     * @param _receipt Receipt of delivery event.
      * @param _proof Proof of message delivery.
      * @param _destinationBC Destination blockchain.
      * @param _messageNumber Message number.
@@ -237,39 +240,29 @@ contract OutgoingCommunication is Ownable {
     ) external payable {
         // Calls verification contract
         IVerification verification = IVerification(verificationContractAddress);
-        // Check finality
-        //require(
-        //    logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-        //        .blocknumber +
-        //        logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-        //            .data
-        //            .finalityNBlocks <=
-        //        blocknumberPerChainId[_sourceBC],
-        //    "Finality not reached for message"
-        //);
+        require(
+            verification.verifyFinality(
+                _receipt.recChainId,
+                _receipt.recBlockNumber + 32
+            ),
+            "Finality not reached for message delivery"
+        );
 
         // Verify the Merkle proof before forwarding
         require(
-            verification.verifyMessage(
-                _destinationBC,
-                _messageNumber,
-                _proof,
-
-                _messageNumber
-                ]
-            ),
-            "Invalid Merkle proof"
+            verification.verifyMessage(_receipt, _proof),
+            "Invalid Merkle proof for message delivery"
         );
-        //address payable recipient = payable(
-        //    logDataPerChainIdAndMsgNumber[_destinationBC][_messageNumber]
-        //);
-        //// Sends the fee asociated with the message
-        //(bool success, ) = recipient.call{
-        //    value: msgFeePerDestChainIdAndNumber[_destinationBC][_messageNumber]
-        //}("");
-        //if (!success) {
-        //    revert("Call failed");
-        //}
+        // Decode events
+        address _decodedReceipt;
+        address payable recipient = payable(_decodedReceipt.relayer);
+        // Sends the fee asociated with the message
+        (bool success, ) = recipient.call{
+            value: msgFeePerDestChainIdAndNumber[_destinationBC][_messageNumber]
+        }("");
+        if (!success) {
+            revert("Call failed");
+        }
     }
 
     /* ENDPOINT MAINTAINANCE FUNCTIONS */
