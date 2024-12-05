@@ -9,25 +9,12 @@ import "hardhat/console.sol";
 
 interface IVerification {
     /**
-     * @notice Log information required to verify proof
+     * @notice message delivered
      */
-    struct Log {
-        address eventAddress;
-        bytes data;
-        bytes[] topic;
-    }
-    /**
-     * @notice Receipt information required to validate proof
-     */
-    struct Receipt {
-        string status;
-        string txType;
-        uint256 cumulativeGasUsed;
-        bytes logsBloom;
-        Log[] logs;
-        uint256 recChainId;
-        uint256 recBlockNumber;
-        address recAddress;
+    struct MessagesDelivered {
+        address[] relayers;
+        uint256 sourceBC;
+        uint256[] messageNumbers;
     }
 
     function verifyFinality(
@@ -35,36 +22,17 @@ interface IVerification {
         uint256 _finalityBlock
     ) external view returns (bool);
 
-    function verifyMessage(
-        Receipt calldata _receipt,
-        bytes32[] calldata _proof
+    function verifyMessageDelivery(
+        MessagesDelivered calldata _messageDelivery,
+        address _msgAddress,
+        uint256 _destinationBC,
+        uint256 _destinationBlockNumber
     ) external view returns (bool);
 }
 
 contract OutgoingCommunication is Ownable {
     address public verificationContractAddress;
 
-    /**
-     * @notice Log information required to verify proof
-     */
-    struct Log {
-        address eventAddress;
-        bytes data;
-        bytes[] topic;
-    }
-    /**
-     * @notice Receipt information required to validate proof
-     */
-    struct Receipt {
-        string status;
-        string txType;
-        uint256 cumulativeGasUsed;
-        bytes logsBloom;
-        Log[] logs;
-        uint256 recChainId;
-        uint256 recBlockNumber;
-        address recAddress;
-    }
     /**
      * @notice Status for outgoing messaages
      */
@@ -81,20 +49,20 @@ contract OutgoingCommunication is Ownable {
      * @param sender address of the message sender
      * @param receiver address of the receiver in the destination blockchain
      * @param destinationBC Id of the blockchain to relay the message to
-     * @param fee fee to pay gas fees and the incentive for the relayer
      * @param finalityNBlocks Number of blocks for the message to reach finality
      * @param messageNumber Number of message, unique per destintation blockchain
      * @param taxi Indicates whether bus or taxi is used for reception confirmation event
+     * @param fee fee to pay gas fees and the incentive for the relayer
      */
     event OutboundMessage(
         bytes data,
         address sender,
         address receiver,
         uint256 destinationBC,
-        uint256 fee,
         uint16 finalityNBlocks,
         uint256 messageNumber,
-        bool taxi
+        bool taxi,
+        uint256 fee
     );
 
     /**
@@ -218,50 +186,66 @@ contract OutgoingCommunication is Ownable {
             msg.sender,
             _receiver,
             _destinationBC,
-            msg.value,
             _finalityNBlocks,
             outgoingMsgNumberPerDestChain[_destinationBC],
-            _taxi
+            _taxi,
+            msg.value
         );
     }
 
     /**
      * @notice Transfer fees to the relayer that forwarded the message.
-     * @param _receipt Receipt of delivery event.
-     * @param _proof Proof of message delivery.
+     * @param _messagesDelivered Information of delivery event.
      * @param _destinationBC Destination blockchain.
-     * @param _messageNumber Message number.
+     * @param _destinationBlockNumber Destination blockchain.
+     * @param _destinationEndpoint Destination endpoint address.
+     * @param _relayerAddress Relayer address to pay to.
      */
     function payRelayer(
-        Receipt calldata _receipt,
-        bytes32[] calldata _proof,
+        IVerification.MessagesDelivered calldata _messagesDelivered,
         uint256 _destinationBC,
-        uint256 _messageNumber
+        uint256 _destinationBlockNumber,
+        address _destinationEndpoint,
+        address payable _relayerAddress
     ) external payable {
         // Calls verification contract
         IVerification verification = IVerification(verificationContractAddress);
         require(
             verification.verifyFinality(
-                _receipt.recChainId,
-                _receipt.recBlockNumber + 32
+                _destinationBC,
+                _destinationBlockNumber + 32 // TODO: Implement per chain finality condition
             ),
             "Finality not reached for message delivery"
         );
 
         // Verify the Merkle proof before forwarding
         require(
-            verification.verifyMessage(_receipt, _proof),
-            "Invalid Merkle proof for message delivery"
+            verification.verifyMessageDelivery(
+                _messagesDelivered,
+                _destinationEndpoint,
+                _destinationBC,
+                _destinationBlockNumber
+            ),
+            "Invalid message delivery data"
         );
-        // Decode events
-        address _decodedReceipt;
-        address payable recipient = payable(_decodedReceipt.relayer);
-        // Sends the fee asociated with the message
-        (bool success, ) = recipient.call{
-            value: msgFeePerDestChainIdAndNumber[_destinationBC][_messageNumber]
-        }("");
-        if (!success) {
-            revert("Call failed");
+        uint256 feeToPay = 0;
+        for (uint256 i = 0; i < _messagesDelivered.messageNumbers.length; i++) {
+            // Sends the fee asociated with the message and the relayer address
+            if (_relayerAddress == _messagesDelivered.relayers[i]) {
+                feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
+                    _messagesDelivered.messageNumbers[i]
+                ];
+                msgFeePerDestChainIdAndNumber[_destinationBC][
+                    _messagesDelivered.messageNumbers[i]
+                ] = 0;
+                (bool success, ) = _relayerAddress.call{value: feeToPay}("");
+                if (!success) {
+                    revert("Call failed");
+                    msgFeePerDestChainIdAndNumber[_destinationBC][
+                        _messagesDelivered.messageNumbers[i]
+                    ] = feeToPay;
+                }
+            }
         }
     }
 
