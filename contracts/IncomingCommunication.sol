@@ -9,12 +9,13 @@ import "hardhat/console.sol";
 
 contract IncomingCommunication is Ownable {
     /**
-     * @notice Status for incoming messaages
+     * @notice Status for incoming messages
      */
     enum IncomingMsgStatus {
         Undefined,
         Delivered,
-        Cancelled
+        Cancelled, 
+        Failed
     }
 
     /**
@@ -22,18 +23,59 @@ contract IncomingCommunication is Ownable {
      * @dev
      * @param relayer address to pay relayer on source blockchainr
      * @param sourceBC Id of the source blockchain
+     * @param destinationBC Id of the destination blockchain
      * @param messageNumber Number of message, unique per destintation blockchain
      */
     event InboundMessage(
         address relayer,
         uint256 sourceBC,
+        uint256 destinationBC,
         uint256 messageNumber
     );
 
     /**
+     * @notice Indicates that a new message is received from outside the blockchain
+     * @dev
+     * @param relayer address to pay relayer on source blockchainr
+     * @param data message data
+     * @param messageNumber Number of message, unique per destintation blockchain
+     * @param destinationAddress destination addres
+     */
+    event MessageSent(
+        address relayer,
+        bytes32 data,
+        uint256 messageNumber,
+        address destinationAddress
+    );
+
+    /**
+     * @notice Indicates that oracle addresses have been added
+     * @dev
+     * @param addedOracles List of added oracle addresses
+     */
+    event OracleAddressesAdded(
+        address[] addedOracles
+    );
+
+    /**
+     * @notice Indicates that oracle addresses have been removed
+     * @dev
+     * @param removedOracles List of removed oracle addresses
+     */
+    event OracleAddressesRemoved(
+        address[] removedOracles
+    );
+
+    // DYNAMIC CONFIG
+    /**
+     * @notice Set of allowed oracle addresses.
+     */
+    mapping(address => bool) private s_oracleAddresses;
+
+    /**
      * @notice Tracks processed incoming message status per source blockchain.
      */
-    mapping(uint256 => mapping(uint256 => IncomingMsgStatus))
+    mapping(uint256 => mapping(uint256 => IncomingMsgStatus)) //first  uint256 is message number
         public inMsgStatusPerChainIdAndMsgNumber;
 
     /**
@@ -43,7 +85,7 @@ contract IncomingCommunication is Ownable {
         public recTrieRootPerChainIdAndBlocknumber;
 
     /**
-     * @notice Tracks log data per source blockchhain and message number
+     * @notice Tracks log data per source blockchain and message number. Used for finality determination.
      */
     mapping(uint256 => mapping(uint256 => bytes))
         public logDataPerChainIdAndMsgNumber;
@@ -53,13 +95,71 @@ contract IncomingCommunication is Ownable {
      */
     mapping(uint256 => uint256) public blocknumberPerChainId;
 
-    // TODO: Add mapping for allowed oracle addresses and functions to update list
 
-    constructor(uint[] memory _blockChainIds) payable Ownable(msg.sender) {
+    constructor(uint[] memory _blockChainIds, address[] memory _oracleAddresses) payable Ownable(msg.sender) {
         for (uint i = 0; i < _blockChainIds.length; i++) {
             blocknumberPerChainId[_blockChainIds[i]] = 1;
         }
+
+        _addOracles(_oracleAddresses);
     }
+
+    // ================================================================
+    // │                           Oracles                             │
+    // ================================================================
+
+    /**
+     * @notice Add oracle addresses to the allowed list.
+     * @param _oracleAddresses List of oracle addresses to add.
+     */
+    function addOracles(address[] calldata _oracleAddresses) external onlyOwner {
+        _addOracles(_oracleAddresses);
+    }
+
+    /**
+     * @notice Remove oracle addresses from the allowed list.
+     * @param _oracleAddresses List of oracle addresses to remove.
+     */
+    function removeOracles(address[] calldata _oracleAddresses) external onlyOwner {
+        address[] memory removedOracles = new address[](_oracleAddresses.length);
+
+        for (uint i = 0; i < _oracleAddresses.length; i++) {
+            if (s_oracleAddresses[_oracleAddresses[i]]) {
+                s_oracleAddresses[_oracleAddresses[i]] = false;
+                removedOracles[i] = _oracleAddresses[i];
+            }
+        }
+        emit OracleAddressesRemoved(removedOracles);
+    }
+
+    /**
+     * @notice Check if an address is an allowed oracle.
+     * @param _oracleAddress Address to check.
+     * @return True if the address is allowed, false otherwise.
+     */
+    function isAllowedOracle(address _oracleAddress) external view returns (bool) {
+        return s_oracleAddresses[_oracleAddress];
+    }
+
+    /**
+     * @dev Internal function to add oracle addresses to the allowed list.
+     * @param _oracleAddresses List of oracle addresses to add.
+     */
+    function _addOracles(address[] memory _oracleAddresses) internal {
+        address[] memory addedOracles = new address[](_oracleAddresses.length);
+
+        for (uint i = 0; i < _oracleAddresses.length; i++) {
+            if (!s_oracleAddresses[_oracleAddresses[i]]) {
+                s_oracleAddresses[_oracleAddresses[i]] = true;
+                addedOracles[i] = _oracleAddresses[i];
+            }
+        }
+        emit OracleAddressesAdded(addedOracles);
+    }
+
+    // ================================================================
+    // │                           Messaging                          │
+    // ================================================================
 
     /**
      * @notice Receive a message from outside chain.
@@ -68,31 +168,39 @@ contract IncomingCommunication is Ownable {
      * @param _sourceBC Id of the source blockchain
      * @param _messageNumber message number
      */
-    function inboundsMessage(
+    function inboundMessage(
         bytes32[] calldata _proof,
         address _relayer,
         uint256 _sourceBC,
-        uint256 _messageNumber
+        uint256 _messageNumber,
+        bytes32 _data, //                    )
+        uint256 _destinationBC, //           }     no falta esto??? 
+        address _destinationAddress //     )
+
     ) external payable {
         require(
             inMsgStatusPerChainIdAndMsgNumber[_sourceBC][_messageNumber] ==
                 IncomingMsgStatus.Undefined,
-            "Message already delivered"
+            "Message already received"
         );
         require(
             blocknumberPerChainId[_sourceBC] > 0,
             "Not supporte blockchain"
         );
+        require(
+            s_oracleAddresses[msg.sender],
+            "Caller is not an allowed oracle"
+        );
         // Check finality
-        //require(
-        //    logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-        //        .blocknumber +
-        //        logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-        //            .data
-        //            .finalityNBlocks <=
-        //        blocknumberPerChainId[_sourceBC],
-        //    "Finality not reached for message"
-        //);
+/*         require(
+           logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
+               .blocknumber +
+               logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
+                   .data
+                   .finalityNBlocks <=
+               blocknumberPerChainId[_sourceBC],
+           "Finality not reached for message"
+        ); */
 
         // Verify the Merkle proof before forwarding
         require(
@@ -105,17 +213,29 @@ contract IncomingCommunication is Ownable {
             "Invalid Merkle proof"
         );
 
-        emit InboundMessage(_relayer, _sourceBC, _messageNumber);
+        // This event is listened to by relayers to earn their fees
+        emit InboundMessage(_relayer, _sourceBC, _destinationBC, _messageNumber);
+
+        // Execute msg
+        // Change msg status to delivered first to avoid re entry
         inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
             _messageNumber
         ] = IncomingMsgStatus.Delivered;
-        // TODO: Forward message
+
         // Call the target contract's function to handle the message
-        //(bool success, ) = _receiver.call(
-        //    abi.encodeWithSignature("handleMessage(bytes)", _data)
-        //);
-        //require(success, "In chain message forwarding failed");
-        //emit MessageSent(msg.sender, _data);
+        (bool success, ) = _destinationAddress.call(
+           abi.encodeWithSignature("handleMessage(bytes)", _data)
+        );
+
+        if (!success) {
+            // Change msg status to failed
+            inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+                _messageNumber
+            ] = IncomingMsgStatus.Failed;
+        }
+
+        require(success, "On-chain message execution failed");
+        emit MessageSent(msg.sender, _data, _messageNumber, _destinationAddress);
     }
 
     /**
@@ -135,9 +255,6 @@ contract IncomingCommunication is Ownable {
         return MerkleProof.verify(proof, root, messageHash);
     }
 
-    // ORACLE Functions
-    // TODO: Validate that is a trusted source before updating values
-    // Only owner can update values?
 
     /**
      * @notice Sets message log per blockchain id and message number.
@@ -182,8 +299,11 @@ contract IncomingCommunication is Ownable {
         blocknumberPerChainId[_blockchain] = _blocknumber;
     }
 
+    // ================================================================
+    // │                           Utils                             │
+    // ================================================================
     /**
-     * @notice Sets belance from address.
+     * @notice Gets balance from address.
      */
     function getBalance() public view returns (uint256) {
         console.log(address(this).balance);
@@ -191,4 +311,5 @@ contract IncomingCommunication is Ownable {
     }
     // TODO: Function to add new supported BCs (require contract owner)
     // TODO: Function to deposit/withdraw funds from contract (require contract owner)
+
 }
