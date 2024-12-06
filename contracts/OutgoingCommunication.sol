@@ -7,7 +7,33 @@ import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
 
+interface IVerification {
+    /**
+     * @notice message delivered
+     */
+    struct MessagesDelivered {
+        address[] relayers;
+        uint256 sourceBC;
+        uint256[] messageNumbers;
+    }
+
+    function verifyFinality(
+        uint256 _blockchain,
+        uint256 _finalityBlock
+    ) external view returns (bool);
+
+    function verifyMessageDelivery(
+        MessagesDelivered calldata _messageDelivery,
+        address _msgAddress,
+        uint256 _destinationBC,
+        uint256 _destinationBlockNumber
+    ) external view returns (bool);
+}
+
 contract OutgoingCommunication is Ownable {
+    address verificationContractAddress =
+        0xAB8Eb9F37bD460dF99b11767aa843a8F27FB7A6e;
+
     /**
      * @notice Status for outgoing messaages
      */
@@ -24,20 +50,20 @@ contract OutgoingCommunication is Ownable {
      * @param sender address of the message sender
      * @param receiver address of the receiver in the destination blockchain
      * @param destinationBC Id of the blockchain to relay the message to
-     * @param fee fee to pay gas fees and the incentive for the relayer
      * @param finalityNBlocks Number of blocks for the message to reach finality
      * @param messageNumber Number of message, unique per destintation blockchain
      * @param taxi Indicates whether bus or taxi is used for reception confirmation event
+     * @param fee fee to pay gas fees and the incentive for the relayer
      */
     event OutboundMessage(
         bytes data,
         address sender,
         address receiver,
         uint256 destinationBC,
-        uint256 fee,
         uint16 finalityNBlocks,
         uint256 messageNumber,
-        bool taxi
+        bool taxi,
+        uint256 fee
     );
 
     /**
@@ -70,6 +96,11 @@ contract OutgoingCommunication is Ownable {
         public msgFeePerDestChainIdAndNumber;
 
     /**
+     * @notice Addresses allowed to act as Oracles
+     */
+    mapping(address => bool) public allowedOracles;
+
+    /**
      * @notice Communication contract addreses per destination blockchain.
      */
     mapping(uint256 => address) public destAddresesPerChainId;
@@ -82,6 +113,8 @@ contract OutgoingCommunication is Ownable {
             destAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[i];
         }
     }
+
+    /* BRIDGE FUNCTIONS */
 
     /**
      * @notice Updates the message fee for an already emitted message.
@@ -142,13 +175,10 @@ contract OutgoingCommunication is Ownable {
         uint16 _finalityNBlocks,
         bool _taxi
     ) external payable {
-        console.log(_destinationBC);
         require(
             destAddresesPerChainId[_destinationBC] != address(0),
             "Destination blockchain not supported"
         );
-
-        console.log("sendMessage Function");
 
         outgoingMsgNumberPerDestChain[_destinationBC]++;
 
@@ -157,16 +187,81 @@ contract OutgoingCommunication is Ownable {
             msg.sender,
             _receiver,
             _destinationBC,
-            msg.value,
             _finalityNBlocks,
             outgoingMsgNumberPerDestChain[_destinationBC],
-            _taxi
+            _taxi,
+            msg.value
         );
     }
-    // TODO: pay Relayer function (check message delivery)
+
+    /**
+     * @notice Transfer fees to the relayer that forwarded the message.
+     * @param _messagesDelivered Information of delivery event.
+     * @param _destinationBC Destination blockchain.
+     * @param _destinationBlockNumber Destination blockchain.
+     * @param _destinationEndpoint Destination endpoint address.
+     * @param _relayerAddress Relayer address to pay to.
+     */
+    function payRelayer(
+        IVerification.MessagesDelivered calldata _messagesDelivered,
+        uint256 _destinationBC,
+        uint256 _destinationBlockNumber,
+        address _destinationEndpoint,
+        address payable _relayerAddress
+    ) external payable {
+        // Calls verification contract
+        IVerification verification = IVerification(verificationContractAddress);
+        require(
+            verification.verifyFinality(
+                _destinationBC,
+                _destinationBlockNumber + 32 // TODO: Implement per chain finality condition
+            ),
+            "Finality not reached for message delivery"
+        );
+
+        // Verify the Merkle proof before forwarding
+        require(
+            verification.verifyMessageDelivery(
+                _messagesDelivered,
+                _destinationEndpoint,
+                _destinationBC,
+                _destinationBlockNumber
+            ),
+            "Invalid message delivery data"
+        );
+        uint256 feeToPay = 0;
+        for (uint256 i = 0; i < _messagesDelivered.messageNumbers.length; i++) {
+            // Sends the fee asociated with the message and the relayer address
+            if (_relayerAddress == _messagesDelivered.relayers[i]) {
+                feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
+                    _messagesDelivered.messageNumbers[i]
+                ];
+                msgFeePerDestChainIdAndNumber[_destinationBC][
+                    _messagesDelivered.messageNumbers[i]
+                ] = 0;
+                (bool success, ) = _relayerAddress.call{value: feeToPay}("");
+                if (!success) {
+                    msgFeePerDestChainIdAndNumber[_destinationBC][
+                        _messagesDelivered.messageNumbers[i]
+                    ] = feeToPay;
+                    revert("Call failed");
+                }
+            }
+        }
+    }
+
+    /* ENDPOINT MAINTAINANCE FUNCTIONS */
+
     // TODO: Function to add new supported BCs (require contract owner)
     // TODO: Function to deposit/withdraw funds from contract (require contract owner)
     // TODO: Function to change destination blockchain addresses (require contract owner)
     // TODO: Add proof verification to test message reception events
-    // TODO: Add list of allowed oracles to recieve block data.
+
+    /**
+     * @notice Sets belance from address.
+     */
+    function getBalance() public view returns (uint256) {
+        console.log(address(this).balance);
+        return address(this).balance;
+    }
 }
