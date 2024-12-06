@@ -12,7 +12,7 @@ interface IVerification {
      * @notice message delivered
      */
     struct MessagesDelivered {
-        address[] relayers;
+        address relayer;
         uint256 sourceBC;
         uint256[] messageNumbers;
     }
@@ -94,11 +94,6 @@ contract OutgoingCommunication is Ownable {
      */
     mapping(uint256 => mapping(uint256 => uint256))
         public msgFeePerDestChainIdAndNumber;
-
-    /**
-     * @notice Addresses allowed to act as Oracles
-     */
-    mapping(address => bool) public allowedOracles;
 
     /**
      * @notice Communication contract addreses per destination blockchain.
@@ -200,14 +195,12 @@ contract OutgoingCommunication is Ownable {
      * @param _destinationBC Destination blockchain.
      * @param _destinationBlockNumber Destination blockchain.
      * @param _destinationEndpoint Destination endpoint address.
-     * @param _relayerAddress Relayer address to pay to.
      */
     function payRelayer(
         IVerification.MessagesDelivered calldata _messagesDelivered,
         uint256 _destinationBC,
         uint256 _destinationBlockNumber,
-        address _destinationEndpoint,
-        address payable _relayerAddress
+        address _destinationEndpoint
     ) external payable {
         // Calls verification contract
         IVerification verification = IVerification(verificationContractAddress);
@@ -219,7 +212,7 @@ contract OutgoingCommunication is Ownable {
             "Finality not reached for message delivery"
         );
 
-        // Verify the Merkle proof before forwarding
+        // Verify proof before accepting delivery
         require(
             verification.verifyMessageDelivery(
                 _messagesDelivered,
@@ -232,20 +225,20 @@ contract OutgoingCommunication is Ownable {
         uint256 feeToPay = 0;
         for (uint256 i = 0; i < _messagesDelivered.messageNumbers.length; i++) {
             // Sends the fee asociated with the message and the relayer address
-            if (_relayerAddress == _messagesDelivered.relayers[i]) {
-                feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
-                    _messagesDelivered.messageNumbers[i]
-                ];
+            feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
+                _messagesDelivered.messageNumbers[i]
+            ];
+            msgFeePerDestChainIdAndNumber[_destinationBC][
+                _messagesDelivered.messageNumbers[i]
+            ] = 0;
+            (bool success, ) = _messagesDelivered.relayer.call{value: feeToPay}(
+                ""
+            );
+            if (!success) {
                 msgFeePerDestChainIdAndNumber[_destinationBC][
                     _messagesDelivered.messageNumbers[i]
-                ] = 0;
-                (bool success, ) = _relayerAddress.call{value: feeToPay}("");
-                if (!success) {
-                    msgFeePerDestChainIdAndNumber[_destinationBC][
-                        _messagesDelivered.messageNumbers[i]
-                    ] = feeToPay;
-                    revert("Call failed");
-                }
+                ] = feeToPay;
+                revert("Call failed");
             }
         }
     }

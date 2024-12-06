@@ -25,7 +25,7 @@ contract Verification is Ownable {
      * @notice message delivered
      */
     struct MessagesDelivered {
-        address[] relayers;
+        address relayer;
         uint256 sourceBC;
         uint256[] messageNumbers;
     }
@@ -111,7 +111,7 @@ contract Verification is Ownable {
     function verifyFinality(
         uint256 _blockchain,
         uint256 _finalityBlock
-    ) public view onlyRelayers returns (bool) {
+    ) external view onlyRelayers returns (bool) {
         return (blocknumberPerChainId[_blockchain] >= _finalityBlock);
     }
 
@@ -126,7 +126,7 @@ contract Verification is Ownable {
         uint256 _sourceBC,
         uint256 _sourceBlockNumber
     )
-        public
+        external
         view
         onlyRelayers
         onlyThisChain(_message.destinationBC)
@@ -181,7 +181,7 @@ contract Verification is Ownable {
         // Serialize and hash message receipt
         bytes32 hashedData = keccak256(
             abi.encode(
-                _messagesDelivered.relayers,
+                _messagesDelivered.relayer,
                 _messagesDelivered.sourceBC,
                 _messagesDelivered.messageNumbers,
                 _destinationBC,
