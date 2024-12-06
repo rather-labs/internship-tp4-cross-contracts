@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
+import "./Verification.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -18,34 +19,28 @@ contract IncomingCommunication is Ownable {
         Failed
     }
 
-    /**
+    /** 
      * @notice Indicates that a new message is received from outside the blockchain
      * @dev
      * @param relayer address to pay relayer on source blockchainr
      * @param sourceBC Id of the source blockchain
-     * @param destinationBC Id of the destination blockchain
      * @param messageNumber Number of message, unique per destintation blockchain
      */
-    event InboundMessage(
+    event InboundMessage( 
         address relayer,
         uint256 sourceBC,
-        uint256 destinationBC,
         uint256 messageNumber
     );
 
-    /**
+    /** ADD TAXI/BUS, define struct with 
      * @notice Indicates that a new message is received from outside the blockchain
      * @dev
-     * @param relayer address to pay relayer on source blockchainr
-     * @param data message data
-     * @param messageNumber Number of message, unique per destintation blockchain
-     * @param destinationAddress destination addres
-     */
+     * @param messageNumber message nonce
+     * @param sourceBC source blockchain
+     */ 
     event MessageSent(
-        address relayer,
-        bytes32 data,
         uint256 messageNumber,
-        address destinationAddress
+        uint256 sourceBC,
     );
 
     /**
@@ -161,7 +156,7 @@ contract IncomingCommunication is Ownable {
     // │                           Messaging                          │
     // ================================================================
 
-    /**
+    /**   CAMBIAR NOMBRE A receiveMessage?
      * @notice Receive a message from outside chain.
      * @param _proof inclusion proof for receipt trie
      * @param _relayer address to pay relayer on source blockchain
@@ -169,7 +164,7 @@ contract IncomingCommunication is Ownable {
      * @param _messageNumber message number
      */
     function inboundMessage(
-        bytes32[] calldata _proof,
+        //bytes32[] calldata _proof,
         address _relayer,
         uint256 _sourceBC,
         uint256 _messageNumber,
