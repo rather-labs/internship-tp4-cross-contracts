@@ -78,13 +78,8 @@ contract Verification is Ownable {
         }
     }
 
-    modifier onlyOracles() {
-        require(allowedOracles[msg.sender], "Oracle not authorized");
-        _;
-    }
-
-    modifier onlyRelayers() {
-        require(allowedRelayers[msg.sender], "Relayer not authorized");
+    modifier onlyOracles(address _sender) {
+        require(allowedOracles[_sender], "Oracle not authorized");
         _;
     }
 
@@ -94,7 +89,7 @@ contract Verification is Ownable {
     }
 
     modifier hashReceived(bytes32 eventHash) {
-        require(eventHash == bytes32(0), "Event hash not yet recieved");
+        require(eventHash != bytes32(0), "Event hash not yet recieved");
         _;
     }
 
@@ -106,12 +101,18 @@ contract Verification is Ownable {
         _;
     }
 
+    function checkAllowedRelayers(
+        address _sender
+    ) external view returns (bool) {
+        return (allowedRelayers[_sender]);
+    }
+
     /* BRIDGE FUNCTIONS */
 
     function verifyFinality(
         uint256 _blockchain,
         uint256 _finalityBlock
-    ) external view onlyRelayers returns (bool) {
+    ) external view returns (bool) {
         return (blocknumberPerChainId[_blockchain] >= _finalityBlock);
     }
 
@@ -128,7 +129,6 @@ contract Verification is Ownable {
     )
         external
         view
-        onlyRelayers
         onlyThisChain(_message.destinationBC)
         authEndpoint(_sourceBC, _msgAddress)
         hashReceived(
@@ -168,7 +168,6 @@ contract Verification is Ownable {
     )
         public
         view
-        onlyRelayers
         onlyThisChain(_messagesDelivered.sourceBC)
         authEndpoint(_destinationBC, _msgAddress)
         hashReceived(
@@ -218,7 +217,7 @@ contract Verification is Ownable {
         address _relayerAddress,
         bool _isAllowed
     ) public onlyOwner {
-        allowedOracles[_relayerAddress] = _isAllowed;
+        allowedRelayers[_relayerAddress] = _isAllowed;
     }
 
     /**
@@ -258,7 +257,7 @@ contract Verification is Ownable {
         uint256 _sourceBC,
         uint256 _messageNumber,
         bytes32 _msgHash
-    ) public onlyOracles {
+    ) public onlyOracles(msg.sender) {
         msgHashPerChainIdAndMsgNumber[_sourceBC][_messageNumber] = _msgHash;
     }
 
@@ -272,7 +271,7 @@ contract Verification is Ownable {
         uint256 _destinationBC,
         uint256 _messageNumber,
         bytes32 _msgDeliveryHash
-    ) public onlyOracles {
+    ) public onlyOracles(msg.sender) {
         msgDeliveryHashPerChainIdAndMsgNumber[_destinationBC][
             _messageNumber
         ] = _msgDeliveryHash;
@@ -286,7 +285,7 @@ contract Verification is Ownable {
     function setLastBlock(
         uint256 _blockchain,
         uint256 _blocknumber
-    ) public onlyOracles {
+    ) public onlyOracles(msg.sender) {
         blocknumberPerChainId[_blockchain] = _blocknumber;
     }
 }

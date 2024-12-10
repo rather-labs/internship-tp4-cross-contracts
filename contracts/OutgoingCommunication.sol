@@ -17,6 +17,8 @@ interface IVerification {
         uint256[] messageNumbers;
     }
 
+    function checkAllowedRelayers(address _sender) external view returns (bool);
+
     function verifyFinality(
         uint256 _blockchain,
         uint256 _finalityBlock
@@ -31,8 +33,7 @@ interface IVerification {
 }
 
 contract OutgoingCommunication is Ownable {
-    address verificationContractAddress =
-        0xAB8Eb9F37bD460dF99b11767aa843a8F27FB7A6e;
+    address verificationContractAddress;
 
     /**
      * @notice Status for outgoing messaages
@@ -102,11 +103,13 @@ contract OutgoingCommunication is Ownable {
 
     constructor(
         uint256[] memory _blockChainIds,
-        address[] memory _blockChainAddresses
+        address[] memory _blockChainAddresses,
+        address _verificationAdress
     ) payable Ownable(msg.sender) {
         for (uint i = 0; i < _blockChainIds.length; i++) {
             destAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[i];
         }
+        verificationContractAddress = _verificationAdress;
     }
 
     /* BRIDGE FUNCTIONS */
@@ -203,9 +206,15 @@ contract OutgoingCommunication is Ownable {
         address _destinationEndpoint
     ) external payable {
         // Calls verification contract
-        IVerification verification = IVerification(verificationContractAddress);
+        IVerification _verification = IVerification(
+            verificationContractAddress
+        );
         require(
-            verification.verifyFinality(
+            _verification.checkAllowedRelayers(msg.sender),
+            "Relayer not authorized"
+        );
+        require(
+            _verification.verifyFinality(
                 _destinationBC,
                 _destinationBlockNumber + 32 // TODO: Implement per chain finality condition
             ),
@@ -214,7 +223,7 @@ contract OutgoingCommunication is Ownable {
 
         // Verify proof before accepting delivery
         require(
-            verification.verifyMessageDelivery(
+            _verification.verifyMessageDelivery(
                 _messagesDelivered,
                 _destinationEndpoint,
                 _destinationBC,

@@ -22,6 +22,8 @@ interface IVerification {
         uint256 fee;
     }
 
+    function checkAllowedRelayers(address _sender) external view returns (bool);
+
     function verifyFinality(
         uint256 _blockchain,
         uint256 _finalityBlock
@@ -35,9 +37,16 @@ interface IVerification {
     ) external view returns (bool);
 }
 
+interface IReceiveMessage {
+    function receiveMessage(
+        bytes calldata _messageData,
+        address sender,
+        uint256 sourceBC
+    ) external returns (bool);
+}
+
 contract IncomingCommunication is Ownable {
-    address verificationContractAddress =
-        0xAB8Eb9F37bD460dF99b11767aa843a8F27FB7A6e;
+    address verificationContractAddress;
     /**
      * @notice Status for incoming messages
      */
@@ -54,46 +63,46 @@ contract IncomingCommunication is Ownable {
      * @param relayer address to pay relayer on source blockchainr
      * @param sourceBC Id of the source blockchain
      * @param inboundMessageNumbers Numbers of message, unique per destintation blockchain
-     * @param inboundSuccessfull Wheter the Message was succesfully inbount
+     * @param successfullInbound Wheter the Message was succesfully inbount
      * @param failureReasons Reason of failure per failure
      */
-    event InboundMessages(
+    event InboundMessagesRes(
         address relayer,
         uint256 sourceBC,
         uint256[] inboundMessageNumbers,
-        bool[] inboundSuccessfull,
+        bool[] successfullInbound,
         string[] failureReasons
     );
 
     /**
-     * @notice Indicates that a new message is sent succesfully
-     * @dev
-
-    /**
-     * @notice Tracks processed incoming message status per source blockchain.
+     * @notice Incoming message status per source blockchain and message number.
      */
-    mapping(uint256 => mapping(uint256 => IncomingMsgStatus)) //first  uint256 is message number
+    mapping(uint256 => mapping(uint256 => IncomingMsgStatus))
         public inMsgStatusPerChainIdAndMsgNumber;
 
     /**
-     * @notice Communication contract addreses per destination blockchain.
+     * @notice Communication contract addreses per source blockchain.
      */
-    mapping(uint256 => address) public destAddresesPerChainId;
+    mapping(uint256 => address) public sourceAddresesPerChainId;
 
     constructor(
         uint256[] memory _blockChainIds,
-        address[] memory _blockChainAddresses
+        address[] memory _blockChainAddresses,
+        address _verificationAdress
     ) payable Ownable(msg.sender) {
         for (uint i = 0; i < _blockChainIds.length; i++) {
-            destAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[i];
+            sourceAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[
+                i
+            ];
         }
+        verificationContractAddress = _verificationAdress;
     }
 
     // ================================================================
     // │                           Messaging                          │
     // ================================================================
 
-    /**   CAMBIAR NOMBRE A receiveMessage?
+    /*
      * @notice Receive a message from outside chain.
      * @param _messages Array of messages to be inbound
      * @param _relayer address to pay relayer on source blockchain
@@ -106,9 +115,9 @@ contract IncomingCommunication is Ownable {
         address _sourceEndpoint,
         uint256 _sourceBC,
         uint256[] calldata _sourceBlockNumbers
-    ) external payable {
+    ) external {
         require(
-            destAddresesPerChainId[_sourceBC] != address(0),
+            sourceAddresesPerChainId[_sourceBC] != address(0),
             "Source blockchain not supported"
         );
 
@@ -116,19 +125,23 @@ contract IncomingCommunication is Ownable {
         IVerification _verification = IVerification(
             verificationContractAddress
         );
+        require(
+            _verification.checkAllowedRelayers(msg.sender),
+            "Relayer not authorized"
+        );
         uint256[] memory _inboundMessageNumbers = new uint256[](
             _messages.length
         );
-        bool[] memory _inboundSuccessfull = new bool[](_messages.length);
+        bool[] memory _successfullInbound = new bool[](_messages.length);
         string[] memory _failureReasons = new string[](_messages.length);
-        for (uint256 i = 0; i < _messages.length; i++) {
+        for (uint i = 0; i < _messages.length; i++) {
             _inboundMessageNumbers[i] = _messages[i].messageNumber;
             if (
                 inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
                     _messages[i].messageNumber
                 ] == IncomingMsgStatus.Delivered
             ) {
-                _inboundSuccessfull[i] = false;
+                _successfullInbound[i] = false;
                 _failureReasons[i] = "Inbound: Message already delivered";
                 continue;
             }
@@ -137,8 +150,8 @@ contract IncomingCommunication is Ownable {
                     _messages[i].messageNumber
                 ] == IncomingMsgStatus.Cancelled
             ) {
-                _inboundSuccessfull[i] = false;
-                _failureReasons[i] = "Inbound: Message already canceled";
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Message already cancelled";
                 continue;
             }
             if (
@@ -147,7 +160,7 @@ contract IncomingCommunication is Ownable {
                     _sourceBlockNumbers[i] + _messages[i].finalityNBlocks
                 )
             ) {
-                _inboundSuccessfull[i] = false;
+                _successfullInbound[i] = false;
                 _failureReasons[
                     i
                 ] = "Inbound: Finality not reached for message";
@@ -161,40 +174,40 @@ contract IncomingCommunication is Ownable {
                     _sourceBlockNumbers[i]
                 )
             ) {
-                _inboundSuccessfull[i] = false;
+                _successfullInbound[i] = false;
                 _failureReasons[i] = "Inbound: Invalid Message hash";
                 continue;
             }
 
-            _inboundSuccessfull[i] = true;
+            _successfullInbound[i] = true;
 
             inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
                 _messages[i].messageNumber
             ] = IncomingMsgStatus.Delivered;
 
             // Call the target contract's function to handle the message
-            (bool success, ) = _messages[i].receiver.call(
-                abi.encodeWithSignature(
-                    "handleMessage(bytes)",
-                    _messages[i].data
-                )
-            );
+            //(bool success, ) = _messages[i].receiver.call(
+            //    abi.encodeWithSignature(
+            //        "handleMessage(bytes)",
+            //        _messages[i].data
+            //    )
+            //);
 
-            if (!success) {
-                // Change msg status to failed
-                inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-                    _messages[i].messageNumber
-                ] = IncomingMsgStatus.Failed;
-                _failureReasons[i] = "On chain: message execution failed";
-                continue;
-            }
+            //if (!success) {
+            //    // Change msg status to failed
+            //    inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+            //        _messages[i].messageNumber
+            //    ] = IncomingMsgStatus.Failed;
+            //    _failureReasons[i] = "On chain: message execution failed";
+            //    continue;
+            //}
         }
         // This event is listened to by relayers to earn their fees
-        emit InboundMessages(
+        emit InboundMessagesRes(
             _relayer,
             _sourceBC,
             _inboundMessageNumbers,
-            _inboundSuccessfull,
+            _successfullInbound,
             _failureReasons
         );
     }
