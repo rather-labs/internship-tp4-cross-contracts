@@ -51,10 +51,13 @@ const Communication = buildModule("Communication", (m) => {
   const initialAmount = m.getParameter("initialAmount", ONE_GWEI);
   const chainBlockNumbers = m.getParameter("chainBlockNumbers", CHAIN_BLOCKNUMBERS[CURRENT_CHAIN_ID]);
   const allChainAddresses = m.getParameter("allChainAddresses", CHAIN_ALL_ADDRESSES[CURRENT_CHAIN_ID]);
-
+  
+  const EthereumTrieDB = m.library("EthereumTrieDB");
+  const MerklePatricia = m.library("MerklePatricia", { libraries: {EthereumTrieDB}});
 
   const verification = m.contract("Verification", 
     [chainIds, chainBlockNumbers, allChainAddresses], 
+    { libraries: {MerklePatricia} }
   );
 
   const incomingCommunication = m.contract("IncomingCommunication", 

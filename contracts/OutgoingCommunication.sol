@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -66,6 +65,13 @@ contract OutgoingCommunication is Ownable {
         bool taxi,
         uint256 fee
     );
+
+    /**
+     * @notice Indicates which message fees have already been paid
+     * @param destinationBC Id of the destination blockchain for messages
+     * @param messageNumbers Number of messages
+     */
+    event MessageDeliveryPaid(uint256 destinationBC, uint256[] messageNumbers);
 
     /**
      * @notice Indicates that the fees associated to a previously emmited msg are updated
@@ -231,25 +237,27 @@ contract OutgoingCommunication is Ownable {
             ),
             "Invalid message delivery data"
         );
-        uint256 feeToPay = 0;
+        uint256 _feeToPay = 0;
+        //uint256[] memory _messageNumbers = [];
         for (uint256 i = 0; i < _messagesDelivered.messageNumbers.length; i++) {
             // Sends the fee asociated with the message and the relayer address
-            feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
+            _feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
                 _messagesDelivered.messageNumbers[i]
             ];
             msgFeePerDestChainIdAndNumber[_destinationBC][
                 _messagesDelivered.messageNumbers[i]
             ] = 0;
-            (bool success, ) = _messagesDelivered.relayer.call{value: feeToPay}(
-                ""
-            );
+            (bool success, ) = _messagesDelivered.relayer.call{
+                value: _feeToPay
+            }("");
             if (!success) {
                 msgFeePerDestChainIdAndNumber[_destinationBC][
                     _messagesDelivered.messageNumbers[i]
-                ] = feeToPay;
+                ] = _feeToPay;
                 revert("Call failed");
             }
         }
+        //emit MessageDeliveryPaid(uint256 destin_destinationBCationBC, _messageNumbers)
     }
 
     /* ENDPOINT MAINTAINANCE FUNCTIONS */

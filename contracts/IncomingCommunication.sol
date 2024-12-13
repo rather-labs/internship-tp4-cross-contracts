@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "./Verification.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -22,6 +21,25 @@ interface IVerification {
         uint256 fee;
     }
 
+    /**
+     * @notice Log information
+     */
+    struct Log {
+        bytes txAddress;
+        bytes[] topics;
+        bytes data;
+    }
+    /**
+     * @notice Receipt information
+     */
+    struct Receipt {
+        bytes status;
+        bytes cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+        bytes txType;
+    }
+
     function checkAllowedRelayers(address _sender) external view returns (bool);
 
     function verifyFinality(
@@ -29,20 +47,13 @@ interface IVerification {
         uint256 _finalityBlock
     ) external view returns (bool);
 
-    function verifyMessage(
-        Message calldata _message,
+    function verifyReceipt(
+        Receipt calldata _receipt,
+        bytes32[] memory _proof,
         address _msgAddress,
         uint256 _sourceBC,
         uint256 _sourceBlockNumber
     ) external view returns (bool);
-}
-
-interface IReceiveMessage {
-    function receiveMessage(
-        bytes calldata _messageData,
-        address sender,
-        uint256 sourceBC
-    ) external returns (bool);
 }
 
 contract IncomingCommunication is Ownable {
@@ -104,15 +115,16 @@ contract IncomingCommunication is Ownable {
 
     /*
      * @notice Receive a message from outside chain.
-     * @param _messages Array of messages to be inbound
+     * @param _receipts Array of receipts for messages to be inbound
+     * @param _proofs Array of proofs for receipts to be inbound
      * @param _relayer address to pay relayer on source blockchain
      * @param _sourceBC Id of the source blockchain
      * @param _sourceBlockNumbers Blocknumbers for each message emmission
      */
     function inboundMessages(
-        IVerification.Message[] calldata _messages,
+        IVerification.Receipt[] calldata _receipts,
+        bytes32[][] memory _proofs,
         address _relayer,
-        address _sourceEndpoint,
         uint256 _sourceBC,
         uint256[] calldata _sourceBlockNumbers
     ) external {
@@ -130,15 +142,37 @@ contract IncomingCommunication is Ownable {
             "Relayer not authorized"
         );
         uint256[] memory _inboundMessageNumbers = new uint256[](
-            _messages.length
+            _receipts.length
         );
-        bool[] memory _successfullInbound = new bool[](_messages.length);
-        string[] memory _failureReasons = new string[](_messages.length);
-        for (uint i = 0; i < _messages.length; i++) {
-            _inboundMessageNumbers[i] = _messages[i].messageNumber;
+        bool[] memory _successfullInbound = new bool[](_receipts.length);
+        string[] memory _failureReasons = new string[](_receipts.length);
+        IVerification.Message memory _message;
+        for (uint i = 0; i < _receipts.length; i++) {
+            if (_receipts[i].logs.length == 0) {
+                _inboundMessageNumbers[i] = 0;
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Receipt with no events given";
+                continue;
+            }
+            // Get message information
+            // Check for event emmited by outgoing endpoint
+            // The emit function transaction only emits one event
+            for (uint j = 0; j < _receipts[i].logs.length; j++) {
+                if (
+                    keccak256(
+                        abi.encodePacked(sourceAddresesPerChainId[_sourceBC])
+                    ) == keccak256(_receipts[i].logs[j].txAddress)
+                ) {
+                    _message = abi.decode(
+                        _receipts[i].logs[j].data,
+                        (IVerification.Message)
+                    );
+                }
+            }
+            _inboundMessageNumbers[i] = _message.messageNumber;
             if (
                 inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-                    _messages[i].messageNumber
+                    _message.messageNumber
                 ] == IncomingMsgStatus.Delivered
             ) {
                 _successfullInbound[i] = false;
@@ -147,7 +181,7 @@ contract IncomingCommunication is Ownable {
             }
             if (
                 inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-                    _messages[i].messageNumber
+                    _message.messageNumber
                 ] == IncomingMsgStatus.Cancelled
             ) {
                 _successfullInbound[i] = false;
@@ -157,7 +191,7 @@ contract IncomingCommunication is Ownable {
             if (
                 !_verification.verifyFinality(
                     _sourceBC,
-                    _sourceBlockNumbers[i] + _messages[i].finalityNBlocks
+                    _sourceBlockNumbers[i] + _message.finalityNBlocks
                 )
             ) {
                 _successfullInbound[i] = false;
@@ -167,9 +201,10 @@ contract IncomingCommunication is Ownable {
                 continue;
             }
             if (
-                !_verification.verifyMessage(
-                    _messages[i],
-                    _sourceEndpoint,
+                !_verification.verifyReceipt(
+                    _receipts[i],
+                    _proofs[i],
+                    sourceAddresesPerChainId[_sourceBC],
                     _sourceBC,
                     _sourceBlockNumbers[i]
                 )
@@ -182,7 +217,7 @@ contract IncomingCommunication is Ownable {
             _successfullInbound[i] = true;
 
             inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-                _messages[i].messageNumber
+                _message.messageNumber
             ] = IncomingMsgStatus.Delivered;
 
             // Call the target contract's function to handle the message
