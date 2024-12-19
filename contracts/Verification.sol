@@ -2,9 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-//import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "@polytope-labs/solidity-merkle-trees/src/MerklePatricia.sol";
 import "./Rlp.sol";
+import "./ProofVerficitation.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -133,15 +132,15 @@ contract Verification is Ownable {
         )
         returns (bool)
     {
-        bytes[] memory keys = new bytes[](1);
-        keys[1] = RlpEncoding.encodeBytes(_receipt.txIndex);
-        StorageValue[] memory verified = MerklePatricia.VerifyEthereumProof(
-            recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber],
-            _proof,
-            keys
-        );
-        return (keccak256(verified[0].value) ==
-            keccak256(RlpEncoding.encodeReceipt(_receipt)));
+        return
+            ProofVerification.verifyTrieProof(
+                recTrieRootPerChainIdAndBlockNumber[_sourceBC][
+                    _sourceBlockNumber
+                ],
+                _proof,
+                RlpEncoding.encodeReceipt(_receipt),
+                _receipt.rlpEncTxIndex
+            );
     }
 
     /* ENDPOINT MAINTAINANCE FUNCTIONS */

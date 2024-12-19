@@ -1,7 +1,6 @@
 import hre from "hardhat";
 import { ContractTypesMap } from "hardhat/types/artifacts";
 import { decodeEventLog, hexToString, parseEther, toBytes, toHex } from "viem";
-import { keccak256 } from 'ethereum-cryptography/keccak';
 const CURRENT_CHAIN_ID = (hre.network.config.chainId?? 0).toString();
 const OUT_CHAIN_ADDRESSES:{ [key: string]: string } = { // Outgoing communication contracts
   31337:"0x364C7188028348566E38D762f6095741c49f492B", 
@@ -23,12 +22,12 @@ async function main() {
        true
       ],
       {
-        value: parseEther("0.1"),
-        account: firstWalletClient.account
+        value: parseEther("100", "gwei"),
+        account: firstWalletClient.account,
+        maxFeePerGas: parseEther("10", "gwei")
       } 
     );
     
-    const eventSignature = "OutboundMessage(bytes,address,address,uint256,uint256,uint16,uint256,bool)"
     const contractABI = [
       {
         type: 'event',
@@ -46,7 +45,7 @@ async function main() {
       },
     ];
     const receipt = await publicClient.waitForTransactionReceipt({ hash: transactionHash });
-    // console.log("Transaction mined:", receipt);
+    console.log("Transaction mined:", receipt);
     console.log("Transaction topics:");
     receipt.logs.forEach((log) => {
       console.log(log.topics)

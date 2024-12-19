@@ -16,6 +16,26 @@ interface IVerification {
         uint256[] messageNumbers;
     }
 
+    /**
+     * @notice Log information
+     */
+    struct Log {
+        address txAddress;
+        bytes[] topics;
+        bytes data;
+    }
+    /**
+     * @notice Receipt information
+     */
+    struct Receipt {
+        bytes status;
+        bytes cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+        bytes txType;
+        bytes rlpEncTxIndex;
+    }
+
     function checkAllowedRelayers(address _sender) external view returns (bool);
 
     function verifyFinality(

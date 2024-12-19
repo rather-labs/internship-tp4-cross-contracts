@@ -3,7 +3,7 @@
 
 import { buildModule } from "@nomicfoundation/hardhat-ignition/modules";
 import { parseEther } from "viem";
-import hre from "hardhat";
+import hre, {network } from "hardhat";
 const CURRENT_CHAIN_ID = (hre.network.config.chainId?? 0).toString();
 // 31337 - Localhost 1
 // 31338 - Localhost 2
@@ -15,26 +15,30 @@ const CHAIN_IDS:{ [key: string]: bigint[] } = {
   31337: [31338n], 
   31338: [31337n] , 
 };
-const OUT_CHAIN_ADDRESSES:{ [key: string]: string[] } = { // Outgoing communication contracts
+ // Outgoing communication contracts from other chains, in the order of CHAIN_IDS
+const OUT_CHAIN_ADDRESSES:{ [key: string]: string[] } = {
   31337:["0x4B5f648644865DB820490B3DEee14de9DF7fFF39"], 
   31338:["0x364C7188028348566E38D762f6095741c49f492B"], 
 };
-const IN_CHAIN_ADDRESSES:{ [key: string]: string[] } = { // Incoming communication contracts
+// Incoming communication contracts from other chains, in the order of CHAIN_IDS
+const IN_CHAIN_ADDRESSES:{ [key: string]: string[] } = { 
   31337:["0x8F28B6fF628D11A1f39c550A63D8BF73aD95d1d0"], 
   31338:["0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312"], 
 };
-const VERIFICATION_ADDRESSES:{ [key: string]: string } = { // Verification contracts
-  31337:"0x5147c5c1cb5b5d3f56186c37a4bcfbb3cd0bd5a7", 
-  31338:"0x6f422fcbff104822d27dc5bfacc5c6fa7c32af77", 
+// Verification contract from the same chain
+const VERIFICATION_ADDRESSES:{ [key: string]: string } = { 
+  31337:"0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7", 
+  31338:"0x6F422FcbfF104822D27DC5BFacC5C6FA7c32af77", 
 };
-const CHAIN_ALL_ADDRESSES: { [key: string]: string[][] } = { // All communication contracts
+// All communication contracts from the other chains, in the order of CHAIN_IDS
+const CHAIN_ALL_ADDRESSES: { [key: string]: string[][] } = { 
   31337:[
-    ["0x8F28B6fF628D11A1f39c550A63D8BF73aD95d1d0", 
-     "0x4B5f648644865DB820490B3DEee14de9DF7fFF39"]
+    ["0x4B5f648644865DB820490B3DEee14de9DF7fFF39", 
+     "0x8F28B6fF628D11A1f39c550A63D8BF73aD95d1d0"]
    ],
    31338:[
-    ["0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312", 
-     "0x364C7188028348566E38D762f6095741c49f492B"]
+    ["0x364C7188028348566E38D762f6095741c49f492B", 
+     "0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312"]
   ],
 };
 const CHAIN_BLOCKNUMBERS:{ [key: string]: bigint[] } = {
@@ -51,13 +55,9 @@ const Communication = buildModule("Communication", (m) => {
   const initialAmount = m.getParameter("initialAmount", ONE_GWEI);
   const chainBlockNumbers = m.getParameter("chainBlockNumbers", CHAIN_BLOCKNUMBERS[CURRENT_CHAIN_ID]);
   const allChainAddresses = m.getParameter("allChainAddresses", CHAIN_ALL_ADDRESSES[CURRENT_CHAIN_ID]);
-  
-  const EthereumTrieDB = m.library("EthereumTrieDB");
-  const MerklePatricia = m.library("MerklePatricia", { libraries: {EthereumTrieDB}});
 
   const verification = m.contract("Verification", 
     [chainIds, chainBlockNumbers, allChainAddresses], 
-    { libraries: {MerklePatricia} }
   );
 
   const incomingCommunication = m.contract("IncomingCommunication", 

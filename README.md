@@ -158,11 +158,12 @@ npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network local
 npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat2.config.ts
 ```
 
-Then start relayer service and run these scripts in order
+Then start relayer and oracle services and run these scripts in order
 
 ```shell
-npx hardhat run ./scripts/emitMsg.ts --network localhost
+npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost
 npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost --config ./hardhat2.config.ts
+npx hardhat run ./scripts/emitMsg.ts --network localhost
 npx hardhat run ./scripts/emitMsg.ts --network localhost
 ```
 

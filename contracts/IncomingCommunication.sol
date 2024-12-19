@@ -25,7 +25,7 @@ interface IVerification {
      * @notice Log information
      */
     struct Log {
-        bytes txAddress;
+        address txAddress;
         bytes[] topics;
         bytes data;
     }
@@ -38,6 +38,7 @@ interface IVerification {
         bytes logsBloom;
         Log[] logs;
         bytes txType;
+        bytes rlpEncTxIndex;
     }
 
     function checkAllowedRelayers(address _sender) external view returns (bool);
@@ -49,7 +50,7 @@ interface IVerification {
 
     function verifyReceipt(
         Receipt calldata _receipt,
-        bytes32[] memory _proof,
+        bytes[] memory _proof,
         address _msgAddress,
         uint256 _sourceBC,
         uint256 _sourceBlockNumber
@@ -113,6 +114,43 @@ contract IncomingCommunication is Ownable {
     // │                           Messaging                          │
     // ================================================================
 
+    function decodeMessage(
+        bytes memory _data
+    ) internal pure returns (IVerification.Message memory) {
+        IVerification.Message memory _message;
+        (
+            bytes memory _dataMsg,
+            address _sender,
+            address _receiver,
+            uint256 _destinationBC,
+            uint16 _finalityNBlocks,
+            uint256 _messageNumber,
+            bool _taxi,
+            uint256 _fee
+        ) = abi.decode(
+                _data,
+                (
+                    bytes,
+                    address,
+                    address,
+                    uint256,
+                    uint16,
+                    uint256,
+                    bool,
+                    uint256
+                )
+            );
+        _message.data = _dataMsg;
+        _message.sender = _sender;
+        _message.receiver = _receiver;
+        _message.destinationBC = _destinationBC;
+        _message.finalityNBlocks = _finalityNBlocks;
+        _message.messageNumber = _messageNumber;
+        _message.taxi = _taxi;
+        _message.fee = _fee;
+        return _message;
+    }
+
     /*
      * @notice Receive a message from outside chain.
      * @param _receipts Array of receipts for messages to be inbound
@@ -123,7 +161,7 @@ contract IncomingCommunication is Ownable {
      */
     function inboundMessages(
         IVerification.Receipt[] calldata _receipts,
-        bytes32[][] memory _proofs,
+        bytes[][] memory _proofs,
         address _relayer,
         uint256 _sourceBC,
         uint256[] calldata _sourceBlockNumbers
@@ -146,6 +184,8 @@ contract IncomingCommunication is Ownable {
         );
         bool[] memory _successfullInbound = new bool[](_receipts.length);
         string[] memory _failureReasons = new string[](_receipts.length);
+
+        // Proceed with decoding
         IVerification.Message memory _message;
         for (uint i = 0; i < _receipts.length; i++) {
             if (_receipts[i].logs.length == 0) {
@@ -159,14 +199,11 @@ contract IncomingCommunication is Ownable {
             // The emit function transaction only emits one event
             for (uint j = 0; j < _receipts[i].logs.length; j++) {
                 if (
-                    keccak256(
-                        abi.encodePacked(sourceAddresesPerChainId[_sourceBC])
-                    ) == keccak256(_receipts[i].logs[j].txAddress)
+                    (sourceAddresesPerChainId[_sourceBC] ==
+                        _receipts[i].logs[j].txAddress)
                 ) {
-                    _message = abi.decode(
-                        _receipts[i].logs[j].data,
-                        (IVerification.Message)
-                    );
+                    _message = decodeMessage(_receipts[i].logs[j].data);
+                    break;
                 }
             }
             _inboundMessageNumbers[i] = _message.messageNumber;
@@ -210,7 +247,7 @@ contract IncomingCommunication is Ownable {
                 )
             ) {
                 _successfullInbound[i] = false;
-                _failureReasons[i] = "Inbound: Invalid Message hash";
+                _failureReasons[i] = "Inbound: Invalid inclusion proof";
                 continue;
             }
 

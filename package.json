@@ -16,6 +16,6 @@
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",
-    "@polytope-labs/solidity-merkle-trees": "^0.3.4"
+    "solidity-rlp": "^2.0.8"
   }
 }
