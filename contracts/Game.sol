@@ -5,15 +5,20 @@ contract RockPaperScissorsGame {
     enum Move { None, Rock, Paper, Scissors }
     enum Result { Pending, Player1Wins, Player2Wins, Draw }
 
+    struct GameNumber{
+        uint256 destinationChainID;
+        uint256 sourceChainID;
+    }
+
     struct Game {
         address player1;
         address player2;
         Move player1Move;
         Move player2Move;
-        Result result;
+        Result result; //add destination and source chainID fields
     }
 
-    mapping(uint256 => Game) public games; // Track games by ID
+    mapping(GameNumber => Game) public games; // Track games by ID
     uint256 public gameCounter;
 
     address public communicationContract;
@@ -27,23 +32,27 @@ contract RockPaperScissorsGame {
     }
 
     // Function to create a new game
-    function _createGame(address player1, address player2) external returns (uint256) {
-        gameCounter++;
+    function _createGame(address player1, address player2, uint256 destinationChainID, uint256 sourceChainID, Move move) external returns (uint256) {
+        gameCounter++; //make this unique for each chain
         games[gameCounter] = Game({
             player1: player1,
             player2: player2,
             player1Move: Move.None,
             player2Move: Move.None,
-            result: Result.Pending
+            result: Result.Pending,
+            chainID: chainID
         });
         emit GameCreated(gameCounter, player1, player2);
+        //call submitMove with the initial move
+        submitMove(gameCounter, player, move);
         return gameCounter;
     }
 
     // Function to receive a move from a player
     function submitMove(uint256 gameId, address player, Move move) external {
+        require(games[gameId].player1 != address(0), "Game not found");
         Game storage game = games[gameId];
-        require(game.result == Result.Pending, "Game already completed");
+        require(game.result == Result.Pending, "Game already completed"); //add chainID require
         require(move != Move.None, "Invalid move");
 
         if (player == game.player1) {
@@ -57,6 +66,8 @@ contract RockPaperScissorsGame {
         }
 
         emit MoveMade(gameId, player, move);
+
+        //call communication contract to send the move to the other player
 
         if (game.player1Move != Move.None && game.player2Move != Move.None) {
             determineWinner(gameId);
@@ -82,18 +93,25 @@ contract RockPaperScissorsGame {
 
         emit GameResult(gameId, game.result);
 
-        // Send the result back to the communication contract
-        _sendMessageToCommunicationContract(gameId, game.result);
     }
 
     // Function to handle incoming messages from the communication contract
     // Need to receive the data from the communication contract, maybe we need an extra function to unravel the data for the params
-    function _receiveMessage(uint256 gameId, address player, uint8 move) external {
+    function _receiveMessage(bytes calldata data) external {
+        (uint256 gameId, address player, uint8 move) = abi.decode(data, (uint256, address, uint8));
+
+        if(games[gameId]==0) {
+            //create the game
+            _createGame(player,player2, move);
+        }
         submitMove(gameId, player, Move(move));
     }
 
     // Function to send messages to the communication contract
     function _sendMessageToCommunicationContract(uint256 gameId, Result result) internal {
+        //encode the data
+        bytes memory data = abi.encode(gameId, result);
+
         // Logic for sending messages to the communication contract
         // Implement this according to the cross-chain communication protocol
     }
