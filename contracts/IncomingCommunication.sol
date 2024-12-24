@@ -2,296 +2,286 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "./Verification.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
 
+interface IVerification {
+    /**
+     * @notice Message information
+     */
+    struct Message {
+        bytes data;
+        address sender;
+        address receiver;
+        uint256 destinationBC;
+        uint16 finalityNBlocks;
+        uint256 messageNumber;
+        bool taxi;
+        uint256 fee;
+    }
+
+    /**
+     * @notice Log information
+     */
+    struct Log {
+        address txAddress;
+        bytes[] topics;
+        bytes data;
+    }
+    /**
+     * @notice Receipt information
+     */
+    struct Receipt {
+        bytes status;
+        bytes cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+        bytes txType;
+        bytes rlpEncTxIndex;
+    }
+
+    function checkAllowedRelayers(address _sender) external view returns (bool);
+
+    function verifyFinality(
+        uint256 _blockchain,
+        uint256 _finalityBlock
+    ) external view returns (bool);
+
+    function verifyReceipt(
+        Receipt calldata _receipt,
+        bytes[] memory _proof,
+        address _msgAddress,
+        uint256 _sourceBC,
+        uint256 _sourceBlockNumber
+    ) external view returns (bool);
+}
+
 contract IncomingCommunication is Ownable {
+    address verificationContractAddress;
     /**
      * @notice Status for incoming messages
      */
     enum IncomingMsgStatus {
         Undefined,
         Delivered,
-        Cancelled, 
+        Cancelled,
         Failed
     }
 
-    /** 
+    /**
      * @notice Indicates that a new message is received from outside the blockchain
-     * @dev
+     * @dev A failure can occurr even if inboundSuccessfull is true due to an on-chain msg execution issue
      * @param relayer address to pay relayer on source blockchainr
      * @param sourceBC Id of the source blockchain
-     * @param messageNumber Number of message, unique per destintation blockchain
+     * @param inboundMessageNumbers Numbers of message, unique per destintation blockchain
+     * @param successfullInbound Wheter the Message was succesfully inbount
+     * @param failureReasons Reason of failure per failure
      */
-    event InboundMessage( 
+    event InboundMessagesRes(
         address relayer,
         uint256 sourceBC,
-        uint256 messageNumber
-    );
-
-    /** ADD TAXI/BUS, define struct with 
-     * @notice Indicates that a new message is received from outside the blockchain
-     * @dev
-     * @param messageNumber message nonce
-     * @param sourceBC source blockchain
-     */ 
-    event MessageSent(
-        uint256 messageNumber,
-        uint256 sourceBC,
+        uint256[] inboundMessageNumbers,
+        bool[] successfullInbound,
+        string[] failureReasons
     );
 
     /**
-     * @notice Indicates that oracle addresses have been added
-     * @dev
-     * @param addedOracles List of added oracle addresses
+     * @notice Incoming message status per source blockchain and message number.
      */
-    event OracleAddressesAdded(
-        address[] addedOracles
-    );
-
-    /**
-     * @notice Indicates that oracle addresses have been removed
-     * @dev
-     * @param removedOracles List of removed oracle addresses
-     */
-    event OracleAddressesRemoved(
-        address[] removedOracles
-    );
-
-    // DYNAMIC CONFIG
-    /**
-     * @notice Set of allowed oracle addresses.
-     */
-    mapping(address => bool) private s_oracleAddresses;
-
-    /**
-     * @notice Tracks processed incoming message status per source blockchain.
-     */
-    mapping(uint256 => mapping(uint256 => IncomingMsgStatus)) //first  uint256 is message number
+    mapping(uint256 => mapping(uint256 => IncomingMsgStatus))
         public inMsgStatusPerChainIdAndMsgNumber;
 
     /**
-     * @notice Tracks receipt trie root per source blockchain and blocknumber
+     * @notice Communication contract addreses per source blockchain.
      */
-    mapping(uint256 => mapping(uint256 => bytes32))
-        public recTrieRootPerChainIdAndBlocknumber;
+    mapping(uint256 => address) public sourceAddresesPerChainId;
 
-    /**
-     * @notice Tracks log data per source blockchain and message number. Used for finality determination.
-     */
-    mapping(uint256 => mapping(uint256 => bytes))
-        public logDataPerChainIdAndMsgNumber;
-
-    /**
-     * @notice Tracks blocknumber data per source blockchhain
-     */
-    mapping(uint256 => uint256) public blocknumberPerChainId;
-
-
-    constructor(uint[] memory _blockChainIds, address[] memory _oracleAddresses) payable Ownable(msg.sender) {
+    constructor(
+        uint256[] memory _blockChainIds,
+        address[] memory _blockChainAddresses,
+        address _verificationAdress
+    ) payable Ownable(msg.sender) {
         for (uint i = 0; i < _blockChainIds.length; i++) {
-            blocknumberPerChainId[_blockChainIds[i]] = 1;
+            sourceAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[
+                i
+            ];
         }
-
-        _addOracles(_oracleAddresses);
-    }
-
-    // ================================================================
-    // │                           Oracles                             │
-    // ================================================================
-
-    /**
-     * @notice Add oracle addresses to the allowed list.
-     * @param _oracleAddresses List of oracle addresses to add.
-     */
-    function addOracles(address[] calldata _oracleAddresses) external onlyOwner {
-        _addOracles(_oracleAddresses);
-    }
-
-    /**
-     * @notice Remove oracle addresses from the allowed list.
-     * @param _oracleAddresses List of oracle addresses to remove.
-     */
-    function removeOracles(address[] calldata _oracleAddresses) external onlyOwner {
-        address[] memory removedOracles = new address[](_oracleAddresses.length);
-
-        for (uint i = 0; i < _oracleAddresses.length; i++) {
-            if (s_oracleAddresses[_oracleAddresses[i]]) {
-                s_oracleAddresses[_oracleAddresses[i]] = false;
-                removedOracles[i] = _oracleAddresses[i];
-            }
-        }
-        emit OracleAddressesRemoved(removedOracles);
-    }
-
-    /**
-     * @notice Check if an address is an allowed oracle.
-     * @param _oracleAddress Address to check.
-     * @return True if the address is allowed, false otherwise.
-     */
-    function isAllowedOracle(address _oracleAddress) external view returns (bool) {
-        return s_oracleAddresses[_oracleAddress];
-    }
-
-    /**
-     * @dev Internal function to add oracle addresses to the allowed list.
-     * @param _oracleAddresses List of oracle addresses to add.
-     */
-    function _addOracles(address[] memory _oracleAddresses) internal {
-        address[] memory addedOracles = new address[](_oracleAddresses.length);
-
-        for (uint i = 0; i < _oracleAddresses.length; i++) {
-            if (!s_oracleAddresses[_oracleAddresses[i]]) {
-                s_oracleAddresses[_oracleAddresses[i]] = true;
-                addedOracles[i] = _oracleAddresses[i];
-            }
-        }
-        emit OracleAddressesAdded(addedOracles);
+        verificationContractAddress = _verificationAdress;
     }
 
     // ================================================================
     // │                           Messaging                          │
     // ================================================================
 
-    /**   CAMBIAR NOMBRE A receiveMessage?
+    function decodeMessage(
+        bytes memory _data
+    ) internal pure returns (IVerification.Message memory) {
+        IVerification.Message memory _message;
+        (
+            bytes memory _dataMsg,
+            address _sender,
+            address _receiver,
+            uint256 _destinationBC,
+            uint16 _finalityNBlocks,
+            uint256 _messageNumber,
+            bool _taxi,
+            uint256 _fee
+        ) = abi.decode(
+                _data,
+                (
+                    bytes,
+                    address,
+                    address,
+                    uint256,
+                    uint16,
+                    uint256,
+                    bool,
+                    uint256
+                )
+            );
+        _message.data = _dataMsg;
+        _message.sender = _sender;
+        _message.receiver = _receiver;
+        _message.destinationBC = _destinationBC;
+        _message.finalityNBlocks = _finalityNBlocks;
+        _message.messageNumber = _messageNumber;
+        _message.taxi = _taxi;
+        _message.fee = _fee;
+        return _message;
+    }
+
+    /*
      * @notice Receive a message from outside chain.
-     * @param _proof inclusion proof for receipt trie
+     * @param _receipts Array of receipts for messages to be inbound
+     * @param _proofs Array of proofs for receipts to be inbound
      * @param _relayer address to pay relayer on source blockchain
      * @param _sourceBC Id of the source blockchain
-     * @param _messageNumber message number
+     * @param _sourceBlockNumbers Blocknumbers for each message emmission
      */
-    function inboundMessage(
-        //bytes32[] calldata _proof,
+    function inboundMessages(
+        IVerification.Receipt[] calldata _receipts,
+        bytes[][] memory _proofs,
         address _relayer,
         uint256 _sourceBC,
-        uint256 _messageNumber,
-        bytes32 _data, //                    )
-        uint256 _destinationBC, //           }     no falta esto??? 
-        address _destinationAddress //     )
-
-    ) external payable {
+        uint256[] calldata _sourceBlockNumbers
+    ) external {
         require(
-            inMsgStatusPerChainIdAndMsgNumber[_sourceBC][_messageNumber] ==
-                IncomingMsgStatus.Undefined,
-            "Message already received"
+            sourceAddresesPerChainId[_sourceBC] != address(0),
+            "Source blockchain not supported"
         );
-        require(
-            blocknumberPerChainId[_sourceBC] > 0,
-            "Not supporte blockchain"
+
+        // Calls verification contract
+        IVerification _verification = IVerification(
+            verificationContractAddress
         );
         require(
-            s_oracleAddresses[msg.sender],
-            "Caller is not an allowed oracle"
+            _verification.checkAllowedRelayers(msg.sender),
+            "Relayer not authorized"
         );
-        // Check finality
-/*         require(
-           logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-               .blocknumber +
-               logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
-                   .data
-                   .finalityNBlocks <=
-               blocknumberPerChainId[_sourceBC],
-           "Finality not reached for message"
-        ); */
-
-        // Verify the Merkle proof before forwarding
-        require(
-            verifyMessage(
-                _sourceBC,
-                _messageNumber,
-                _proof,
-                recTrieRootPerChainIdAndBlocknumber[_sourceBC][_messageNumber]
-            ),
-            "Invalid Merkle proof"
+        uint256[] memory _inboundMessageNumbers = new uint256[](
+            _receipts.length
         );
+        bool[] memory _successfullInbound = new bool[](_receipts.length);
+        string[] memory _failureReasons = new string[](_receipts.length);
 
-        // This event is listened to by relayers to earn their fees
-        emit InboundMessage(_relayer, _sourceBC, _destinationBC, _messageNumber);
+        // Proceed with decoding
+        IVerification.Message memory _message;
+        for (uint i = 0; i < _receipts.length; i++) {
+            if (_receipts[i].logs.length == 0) {
+                _inboundMessageNumbers[i] = 0;
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Receipt with no events given";
+                continue;
+            }
+            // Get message information
+            // Check for event emmited by outgoing endpoint
+            // The emit function transaction only emits one event
+            for (uint j = 0; j < _receipts[i].logs.length; j++) {
+                if (
+                    (sourceAddresesPerChainId[_sourceBC] ==
+                        _receipts[i].logs[j].txAddress)
+                ) {
+                    _message = decodeMessage(_receipts[i].logs[j].data);
+                    break;
+                }
+            }
+            _inboundMessageNumbers[i] = _message.messageNumber;
+            if (
+                inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+                    _message.messageNumber
+                ] == IncomingMsgStatus.Delivered
+            ) {
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Message already delivered";
+                continue;
+            }
+            if (
+                inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+                    _message.messageNumber
+                ] == IncomingMsgStatus.Cancelled
+            ) {
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Message already cancelled";
+                continue;
+            }
+            if (
+                !_verification.verifyFinality(
+                    _sourceBC,
+                    _sourceBlockNumbers[i] + _message.finalityNBlocks
+                )
+            ) {
+                _successfullInbound[i] = false;
+                _failureReasons[
+                    i
+                ] = "Inbound: Finality not reached for message";
+                continue;
+            }
+            if (
+                !_verification.verifyReceipt(
+                    _receipts[i],
+                    _proofs[i],
+                    sourceAddresesPerChainId[_sourceBC],
+                    _sourceBC,
+                    _sourceBlockNumbers[i]
+                )
+            ) {
+                _successfullInbound[i] = false;
+                _failureReasons[i] = "Inbound: Invalid inclusion proof";
+                continue;
+            }
 
-        // Execute msg
-        // Change msg status to delivered first to avoid re entry
-        inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-            _messageNumber
-        ] = IncomingMsgStatus.Delivered;
+            _successfullInbound[i] = true;
 
-        // Call the target contract's function to handle the message
-        (bool success, ) = _destinationAddress.call(
-           abi.encodeWithSignature("handleMessage(bytes)", _data)
-        );
-
-        if (!success) {
-            // Change msg status to failed
             inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-                _messageNumber
-            ] = IncomingMsgStatus.Failed;
+                _message.messageNumber
+            ] = IncomingMsgStatus.Delivered;
+
+            // Call the target contract's function to handle the message
+            //(bool success, ) = _messages[i].receiver.call(
+            //    abi.encodeWithSignature(
+            //        "handleMessage(bytes)",
+            //        _messages[i].data
+            //    )
+            //);
+
+            //if (!success) {
+            //    // Change msg status to failed
+            //    inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+            //        _messages[i].messageNumber
+            //    ] = IncomingMsgStatus.Failed;
+            //    _failureReasons[i] = "On chain: message execution failed";
+            //    continue;
+            //}
         }
-
-        require(success, "On-chain message execution failed");
-        emit MessageSent(msg.sender, _data, _messageNumber, _destinationAddress);
-    }
-
-    /**
-     * @notice Verifies a Merkle proof for an incoming message from an external source.
-     * @param proof The Merkle proof.
-     * @param root The Merkle root.
-     */
-    function verifyMessage(
-        uint256 _sourceBC,
-        uint256 _messageNumber,
-        bytes32[] calldata proof,
-        bytes32 root
-    ) private view returns (bool) {
-        bytes32 messageHash = keccak256(
-            logDataPerChainIdAndMsgNumber[_sourceBC][_messageNumber]
+        // This event is listened to by relayers to earn their fees
+        emit InboundMessagesRes(
+            _relayer,
+            _sourceBC,
+            _inboundMessageNumbers,
+            _successfullInbound,
+            _failureReasons
         );
-        return MerkleProof.verify(proof, root, messageHash);
-    }
-
-
-    /**
-     * @notice Sets message log per blockchain id and message number.
-     * @param _blockchain Blockchain identification.
-     * @param _messageNumber Message number.
-     * @param _logData Log data for the msg emission event.
-     */
-    function setMsgLog(
-        uint256 _blockchain,
-        uint256 _messageNumber,
-        bytes memory _logData
-    ) public onlyOwner {
-        logDataPerChainIdAndMsgNumber[_blockchain][_messageNumber] = _logData;
-    }
-
-    /**
-     * @notice Sets receipt trie root per blockchain and blocknumber.
-     * @param _blockchain Blockchain identification.
-     * @param _blocknumber Message number.
-     * @param _recTrieRoot Log data for the msg emission event.
-     */
-    function setRecTrieRoot(
-        uint256 _blockchain,
-        uint256 _blocknumber,
-        bytes32 _recTrieRoot
-    ) public onlyOwner {
-        recTrieRootPerChainIdAndBlocknumber[_blockchain][
-            _blocknumber
-        ] = _recTrieRoot;
-    }
-
-    /**
-     * @notice Sets last confirmed block of the blockchain.
-     * @param _blockchain blockchain identification.
-     * @param _blocknumber blockchain number.
-     */
-    function setLastBlock(
-        uint256 _blockchain,
-        uint256 _blocknumber
-    ) public onlyOwner {
-        console.log(_blockchain, _blocknumber);
-        blocknumberPerChainId[_blockchain] = _blocknumber;
     }
 
     // ================================================================
@@ -306,5 +296,4 @@ contract IncomingCommunication is Ownable {
     }
     // TODO: Function to add new supported BCs (require contract owner)
     // TODO: Function to deposit/withdraw funds from contract (require contract owner)
-
 }

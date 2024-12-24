@@ -153,16 +153,18 @@ npx hardhat node --port 8545
 npx hardhat node --port 8546 --config ./hardhat2.config.ts
 ```
 
-Then run all these scripts in this order.
-Addresses and txHash are hardcoded so they
-must be run immediatly after node startup
-
 ```shell
 npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset
 npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat2.config.ts
-npx hardhat run .\scripts\emitMsg.ts --network localhost
-npx hardhat run .\scripts\recieveMsg.ts --network localhost  --config ./hardhat2.config.ts
-npx hardhat run .\scripts\payMsg.ts --network localhost
+```
+
+Then start relayer and oracle services and run these scripts in order
+
+```shell
+npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost
+npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost --config ./hardhat2.config.ts
+npx hardhat run ./scripts/emitMsg.ts --network localhost
+npx hardhat run ./scripts/emitMsg.ts --network localhost
 ```
 
 ## TODO
