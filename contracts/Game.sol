@@ -30,7 +30,7 @@ contract RockPaperScissorsGame {
 
     uint256 public chainID;
     mapping(uint256 => uint256) public gameCounter; //gameCounter for each chainID
-    mapping(GameId => Game) public games; // Track games by ID
+    mapping(uint256 => mapping(uint256 => Game)) public games; // Track games by chainID and gameNumber
 
     address public communicationContract;
 
@@ -43,8 +43,8 @@ contract RockPaperScissorsGame {
         chainID = _chainID;
     }
 
-    function _determineWinner(GameId gameId) internal {
-        Game storage game = games[gameId];
+    function _determineWinner(GameId memory gameId) internal {
+        Game storage game = games[gameId.rivalChainID][gameId.gameNumber];
         require(game.player1Move != Move.None && game.player2Move != Move.None, "Game not finished");
 
         if (game.player1Move == game.player2Move) {
@@ -75,9 +75,9 @@ contract RockPaperScissorsGame {
             rivalChainID: rivalChainID,
             gameNumber: gameCounter[rivalChainID]
         });
-        require(games[gameId]==0, "Game already exists");
+        require(games[rivalChainID][gameId.gameNumber].player1 == address(0), "Game already exists");
         
-        games[gameId] = Game({
+        games[rivalChainID][gameId.gameNumber] = Game({
             player1: player1,
             player2: player2,
             player1Move: move, //player1 always makes the first move, assigned in the game creation
@@ -89,7 +89,7 @@ contract RockPaperScissorsGame {
 
     
     // Function to send messages to the communication contract
-    function _sendMoveToCommunicationContract(GameId gameId, address player1, address player2, Move move) internal {
+    function _sendMoveToCommunicationContract(GameId memory gameId, address player1, address player2, Move move) internal {
         // First encode the receiveMove function call
         bytes memory functionCall = abi.encodeWithSignature(
             "receiveMove(GameId,address,address,Move)", 
@@ -124,15 +124,14 @@ contract RockPaperScissorsGame {
         );
     }
 
-    function submitMove(GameId calldata gameId, address player1, address player2, Move move) public {
+    function submitMove(GameId memory gameId, address player1, address player2, Move move) public {
         require(move != Move.None, "Invalid move");
 
-        if(games[gameId]==0) {
+        if(games[gameId.rivalChainID][gameId.gameNumber].player1 == address(0)) {
             //create the game and add the first move to the game
             _createGame(player1, player2, gameId.rivalChainID, move);
         } else {
-
-            Game storage game = games[gameId];
+            Game storage game = games[gameId.rivalChainID][gameId.gameNumber];
 
             require(game.result == Result.Pending && game.player2Move == Move.None, "Game already completed"); 
             
@@ -148,10 +147,9 @@ contract RockPaperScissorsGame {
                 _sendMoveToCommunicationContract(gameId, player1, player2, move);
             }
         }
-
     }
 
-    function startGame(GameId calldata gameId, address player1, address player2, Move move) external {
+    function startGame(GameId memory gameId, address player1, address player2, Move move) external {
         _createGame(player1, player2, gameId.rivalChainID, move);
         _sendMoveToCommunicationContract(gameId, player1, player2, move);
     }
@@ -160,7 +158,8 @@ contract RockPaperScissorsGame {
     // Need to receive the data from the communication contract, maybe we need an extra function to unravel the data for the params
     function receiveMove(bytes calldata data) external {
         (GameId memory gameId, address player1, address player2, Move move) = abi.decode(data, (GameId, address, address, Move));
-
+        
+        // Now we can directly use the memory struct
         submitMove(gameId, player1, player2, move);
     }
 

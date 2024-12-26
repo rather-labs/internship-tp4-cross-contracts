@@ -81,18 +81,9 @@ contract IncomingCommunication is Ownable {
     event InboundMessagesRes(
         address relayer,
         uint256 sourceBC,
-        uint256 messageNumber
-    );
-
-    /** ADD TAXI/BUS, define struct with 
-     * @notice Indicates that a new message is received from outside the blockchain
-     * @dev
-     * @param messageNumber message nonce
-     * @param sourceBC source blockchain
-     */ 
-    event MessageSent(
-        uint256 messageNumber,
-        uint256 sourceBC
+        uint256[] inboundMessageNumbers,
+        bool[] successfullInbound,
+        string[] failureReasons
     );
 
     /**
@@ -162,6 +153,8 @@ contract IncomingCommunication is Ownable {
 
     /*
      * @notice Receive a message from outside chain.
+     * @param _receipts Array of receipts for messages to be inbound
+     * @param _proofs Array of proofs for receipts to be inbound
      * @param _relayer address to pay relayer on source blockchain
      * @param _sourceBC Id of the source blockchain
      * @param _sourceBlockNumbers Blocknumbers for each message emmission
