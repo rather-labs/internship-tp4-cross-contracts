@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -12,10 +11,32 @@ interface IVerification {
      * @notice message delivered
      */
     struct MessagesDelivered {
-        address[] relayers;
+        address relayer;
         uint256 sourceBC;
         uint256[] messageNumbers;
     }
+
+    /**
+     * @notice Log information
+     */
+    struct Log {
+        address txAddress;
+        bytes[] topics;
+        bytes data;
+    }
+    /**
+     * @notice Receipt information
+     */
+    struct Receipt {
+        bytes status;
+        bytes cumulativeGasUsed;
+        bytes logsBloom;
+        Log[] logs;
+        bytes txType;
+        bytes rlpEncTxIndex;
+    }
+
+    function checkAllowedRelayers(address _sender) external view returns (bool);
 
     function verifyFinality(
         uint256 _blockchain,
@@ -31,8 +52,7 @@ interface IVerification {
 }
 
 contract OutgoingCommunication is Ownable {
-    address verificationContractAddress =
-        0xAB8Eb9F37bD460dF99b11767aa843a8F27FB7A6e;
+    address verificationContractAddress;
 
     /**
      * @notice Status for outgoing messaages
@@ -67,6 +87,13 @@ contract OutgoingCommunication is Ownable {
     );
 
     /**
+     * @notice Indicates which message fees have already been paid
+     * @param destinationBC Id of the destination blockchain for messages
+     * @param messageNumbers Number of messages
+     */
+    event MessageDeliveryPaid(uint256 destinationBC, uint256[] messageNumbers);
+
+    /**
      * @notice Indicates that the fees associated to a previously emmited msg are updated
      * @param destinationBC Id of the blockchain to relay the message to
      * @param fee fee to pay gas fees and the incentive for the relayer
@@ -96,22 +123,19 @@ contract OutgoingCommunication is Ownable {
         public msgFeePerDestChainIdAndNumber;
 
     /**
-     * @notice Addresses allowed to act as Oracles
-     */
-    mapping(address => bool) public allowedOracles;
-
-    /**
      * @notice Communication contract addreses per destination blockchain.
      */
     mapping(uint256 => address) public destAddresesPerChainId;
 
     constructor(
         uint256[] memory _blockChainIds,
-        address[] memory _blockChainAddresses
+        address[] memory _blockChainAddresses,
+        address _verificationAdress
     ) payable Ownable(msg.sender) {
         for (uint i = 0; i < _blockChainIds.length; i++) {
             destAddresesPerChainId[_blockChainIds[i]] = _blockChainAddresses[i];
         }
+        verificationContractAddress = _verificationAdress;
     }
 
     /* BRIDGE FUNCTIONS */
@@ -200,28 +224,32 @@ contract OutgoingCommunication is Ownable {
      * @param _destinationBC Destination blockchain.
      * @param _destinationBlockNumber Destination blockchain.
      * @param _destinationEndpoint Destination endpoint address.
-     * @param _relayerAddress Relayer address to pay to.
      */
     function payRelayer(
         IVerification.MessagesDelivered calldata _messagesDelivered,
         uint256 _destinationBC,
         uint256 _destinationBlockNumber,
-        address _destinationEndpoint,
-        address payable _relayerAddress
+        address _destinationEndpoint
     ) external payable {
         // Calls verification contract
-        IVerification verification = IVerification(verificationContractAddress);
+        IVerification _verification = IVerification(
+            verificationContractAddress
+        );
         require(
-            verification.verifyFinality(
+            _verification.checkAllowedRelayers(msg.sender),
+            "Relayer not authorized"
+        );
+        require(
+            _verification.verifyFinality(
                 _destinationBC,
                 _destinationBlockNumber + 32 // TODO: Implement per chain finality condition
             ),
             "Finality not reached for message delivery"
         );
 
-        // Verify the Merkle proof before forwarding
+        // Verify proof before accepting delivery
         require(
-            verification.verifyMessageDelivery(
+            _verification.verifyMessageDelivery(
                 _messagesDelivered,
                 _destinationEndpoint,
                 _destinationBC,
@@ -229,25 +257,27 @@ contract OutgoingCommunication is Ownable {
             ),
             "Invalid message delivery data"
         );
-        uint256 feeToPay = 0;
+        uint256 _feeToPay = 0;
+        //uint256[] memory _messageNumbers = [];
         for (uint256 i = 0; i < _messagesDelivered.messageNumbers.length; i++) {
             // Sends the fee asociated with the message and the relayer address
-            if (_relayerAddress == _messagesDelivered.relayers[i]) {
-                feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
-                    _messagesDelivered.messageNumbers[i]
-                ];
+            _feeToPay = msgFeePerDestChainIdAndNumber[_destinationBC][
+                _messagesDelivered.messageNumbers[i]
+            ];
+            msgFeePerDestChainIdAndNumber[_destinationBC][
+                _messagesDelivered.messageNumbers[i]
+            ] = 0;
+            (bool success, ) = _messagesDelivered.relayer.call{
+                value: _feeToPay
+            }("");
+            if (!success) {
                 msgFeePerDestChainIdAndNumber[_destinationBC][
                     _messagesDelivered.messageNumbers[i]
-                ] = 0;
-                (bool success, ) = _relayerAddress.call{value: feeToPay}("");
-                if (!success) {
-                    msgFeePerDestChainIdAndNumber[_destinationBC][
-                        _messagesDelivered.messageNumbers[i]
-                    ] = feeToPay;
-                    revert("Call failed");
-                }
+                ] = _feeToPay;
+                revert("Call failed");
             }
         }
+        //emit MessageDeliveryPaid(uint256 destin_destinationBCationBC, _messageNumbers)
     }
 
     /* ENDPOINT MAINTAINANCE FUNCTIONS */

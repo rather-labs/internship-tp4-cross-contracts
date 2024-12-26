@@ -2,6 +2,8 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "./Rlp.sol";
+import "./ProofVerficitation.sol";
 
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
@@ -25,7 +27,7 @@ contract Verification is Ownable {
      * @notice message delivered
      */
     struct MessagesDelivered {
-        address[] relayers;
+        address relayer;
         uint256 sourceBC;
         uint256[] messageNumbers;
     }
@@ -41,17 +43,10 @@ contract Verification is Ownable {
     mapping(address => bool) public allowedRelayers;
 
     /**
-     * @notice Tracks message hash per source blockchain and message number
+     * @notice Tracks receipt trie root per source blockchain and block number
      */
     mapping(uint256 => mapping(uint256 => bytes32))
-        public msgHashPerChainIdAndMsgNumber;
-
-    /**
-     * @notice Tracks message delivery hash per source blockchain and message number
-     * @dev In bus mode, stores the first message of the array
-     */
-    mapping(uint256 => mapping(uint256 => bytes32))
-        public msgDeliveryHashPerChainIdAndMsgNumber;
+        public recTrieRootPerChainIdAndBlockNumber;
 
     /**
      * @notice Tracks blocknumber data per blockchhain
@@ -78,23 +73,16 @@ contract Verification is Ownable {
         }
     }
 
-    modifier onlyOracles() {
-        //require(allowedOracles[msg.sender], "Oracle not authorized");
+    modifier onlyOracles(address _sender) {
+        require(allowedOracles[_sender], "Oracle not authorized");
         _;
     }
 
-    modifier onlyRelayers() {
-        require(allowedRelayers[msg.sender], "Relayer not authorized");
-        _;
-    }
-
-    modifier onlyThisChain(uint256 chainId) {
-        require(chainId == block.chainid, "Event not intended for this chain");
-        _;
-    }
-
-    modifier hashReceived(bytes32 eventHash) {
-        require(eventHash == bytes32(0), "Event hash not yet recieved");
+    modifier recTrieRootReceived(bytes32 recTrieRoot) {
+        require(
+            recTrieRoot != bytes32(0),
+            "Block receipt trie root not yet recieved"
+        );
         _;
     }
 
@@ -106,93 +94,53 @@ contract Verification is Ownable {
         _;
     }
 
+    function checkAllowedRelayers(
+        address _sender
+    ) external view returns (bool) {
+        return (allowedRelayers[_sender]);
+    }
+
     /* BRIDGE FUNCTIONS */
 
     function verifyFinality(
         uint256 _blockchain,
         uint256 _finalityBlock
-    ) public view onlyRelayers returns (bool) {
+    ) external view returns (bool) {
         return (blocknumberPerChainId[_blockchain] >= _finalityBlock);
     }
 
     /**
      * @notice Verifies a message emition.
-     * @param _message Message that has to be verified.
+     * @param _receipt Receipt that has to be verified.
+     * @param _proof Proof of inclusion for the receipt.
      * @param _msgAddress Endpoint that emits the message
+     * @param _sourceBC Source block for the receipt trie root.
+     * @param _sourceBlockNumber BlockNumber for the receipt trie root.
      */
-    function verifyMessage(
-        Message calldata _message,
+    function verifyReceipt(
+        RlpEncoding.Receipt calldata _receipt,
+        bytes[] memory _proof,
         address _msgAddress,
         uint256 _sourceBC,
         uint256 _sourceBlockNumber
     )
-        public
+        external
         view
-        onlyRelayers
-        onlyThisChain(_message.destinationBC)
         authEndpoint(_sourceBC, _msgAddress)
-        hashReceived(
-            msgHashPerChainIdAndMsgNumber[_sourceBC][_message.messageNumber]
+        recTrieRootReceived(
+            recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber]
         )
         returns (bool)
     {
-        // Serialize and hash message receipt
-        bytes32 hashedData = keccak256(
-            abi.encode(
-                _message.data,
-                _message.sender,
-                _message.receiver,
-                _message.finalityNBlocks,
-                _message.messageNumber,
-                _sourceBC,
-                _sourceBlockNumber
-            )
-        );
-
-        return (hashedData ==
-            msgHashPerChainIdAndMsgNumber[_sourceBC][_message.messageNumber]);
-    }
-
-    /**
-     * @notice Verifies a message delivery event.
-     * @param _messagesDelivered Message delivery event information.
-     * @param _msgAddress Endpoint that emits the event
-     * @param _destinationBC Endpoint that emits the event
-     * @param _destinationBlockNumber Endpoint that emits the event
-     */
-    function verifyMessageDelivery(
-        MessagesDelivered calldata _messagesDelivered,
-        address _msgAddress,
-        uint256 _destinationBC,
-        uint256 _destinationBlockNumber
-    )
-        public
-        view
-        onlyRelayers
-        onlyThisChain(_messagesDelivered.sourceBC)
-        authEndpoint(_destinationBC, _msgAddress)
-        hashReceived(
-            msgDeliveryHashPerChainIdAndMsgNumber[_destinationBC][
-                _messagesDelivered.messageNumbers[0]
-            ]
-        )
-        returns (bool)
-    {
-        // Serialize and hash message receipt
-        bytes32 hashedData = keccak256(
-            abi.encode(
-                _messagesDelivered.relayers,
-                _messagesDelivered.sourceBC,
-                _messagesDelivered.messageNumbers,
-                _destinationBC,
-                _destinationBlockNumber
-            )
-        );
-
-        return (hashedData ==
-            msgDeliveryHashPerChainIdAndMsgNumber[_destinationBC][
-                _messagesDelivered.messageNumbers[0]
-            ]);
+        return
+            ProofVerification.verifyTrieProof(
+                recTrieRootPerChainIdAndBlockNumber[_sourceBC][
+                    _sourceBlockNumber
+                ],
+                _proof,
+                RlpEncoding.encodeReceipt(_receipt),
+                _receipt.rlpEncTxIndex
+            );
     }
 
     /* ENDPOINT MAINTAINANCE FUNCTIONS */
@@ -218,7 +166,7 @@ contract Verification is Ownable {
         address _relayerAddress,
         bool _isAllowed
     ) public onlyOwner {
-        allowedOracles[_relayerAddress] = _isAllowed;
+        allowedRelayers[_relayerAddress] = _isAllowed;
     }
 
     /**
@@ -251,31 +199,17 @@ contract Verification is Ownable {
     /**
      * @notice Sets message hash per blockchain and message number.
      * @param _sourceBC Blockchain identification that emits the event.
-     * @param _messageNumber Message number.
-     * @param _msgHash Hash of msg information.
+     * @param _blockNumber Block number.
+     * @param _reciptTrieRoot Receipt trie root.
      */
-    function setMsgHash(
+    function setRecTrieRoot(
         uint256 _sourceBC,
-        uint256 _messageNumber,
-        bytes32 _msgHash
-    ) public onlyOracles {
-        msgHashPerChainIdAndMsgNumber[_sourceBC][_messageNumber] = _msgHash;
-    }
-
-    /**
-     * @notice Sets message delivery hash per blockchain and message number.
-     * @param _destinationBC Blockchain identification that emits the event.
-     * @param _messageNumber Message number.
-     * @param _msgDeliveryHash Hash of msg information.
-     */
-    function setMsgDeliveryHash(
-        uint256 _destinationBC,
-        uint256 _messageNumber,
-        bytes32 _msgDeliveryHash
-    ) public onlyOracles {
-        msgDeliveryHashPerChainIdAndMsgNumber[_destinationBC][
-            _messageNumber
-        ] = _msgDeliveryHash;
+        uint256 _blockNumber,
+        bytes32 _reciptTrieRoot
+    ) public onlyOracles(msg.sender) {
+        recTrieRootPerChainIdAndBlockNumber[_sourceBC][
+            _blockNumber
+        ] = _reciptTrieRoot;
     }
 
     /**
@@ -286,7 +220,7 @@ contract Verification is Ownable {
     function setLastBlock(
         uint256 _blockchain,
         uint256 _blocknumber
-    ) public onlyOracles {
+    ) public onlyOracles(msg.sender) {
         blocknumberPerChainId[_blockchain] = _blocknumber;
     }
 }
