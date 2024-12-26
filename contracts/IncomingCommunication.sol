@@ -40,7 +40,7 @@ contract IncomingCommunication is Ownable {
      */ 
     event MessageSent(
         uint256 messageNumber,
-        uint256 sourceBC,
+        uint256 sourceBC
     );
 
     /**
@@ -158,7 +158,6 @@ contract IncomingCommunication is Ownable {
 
     /**   CAMBIAR NOMBRE A receiveMessage?
      * @notice Receive a message from outside chain.
-     * @param _proof inclusion proof for receipt trie
      * @param _relayer address to pay relayer on source blockchain
      * @param _sourceBC Id of the source blockchain
      * @param _messageNumber message number
