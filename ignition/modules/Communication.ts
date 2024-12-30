@@ -27,8 +27,8 @@ const IN_CHAIN_ADDRESSES:{ [key: string]: string[] } = {
 };
 // Verification contract from the same chain
 const VERIFICATION_ADDRESSES:{ [key: string]: string } = { 
-  31337:"0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7", 
-  31338:"0x6F422FcbfF104822D27DC5BFacC5C6FA7c32af77", 
+  31337:"0xF2cb3cfA36Bfb95E0FD855C1b41Ab19c517FcDB9", 
+  31338:"0x8e590b19CcD16282333c6AF32e77bCb65e98F3c9", 
 };
 // All communication contracts from the other chains, in the order of CHAIN_IDS
 const CHAIN_ALL_ADDRESSES: { [key: string]: string[][] } = { 
@@ -40,6 +40,21 @@ const CHAIN_ALL_ADDRESSES: { [key: string]: string[][] } = {
     ["0x364C7188028348566E38D762f6095741c49f492B", 
      "0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312"]
   ],
+};
+// Game contracts from all other chains
+const GAME_ADDRESSES:{ [key: string]: string[] } = { 
+  31337:["0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7"], 
+  31338:["0x6F422FcbfF104822D27DC5BFacC5C6FA7c32af77"], 
+};
+// Outgoing communication contract from the same chain
+const OUTGOING_COMMUNICATION_ADDRESS:{ [key: string]: string } = {
+  31337:"0x364C7188028348566E38D762f6095741c49f492B", 
+  31338:"0x4B5f648644865DB820490B3DEee14de9DF7fFF39", 
+};
+// incoming communication contract from the same chain
+const INCOMING_COMMUNICATION_ADDRESS:{ [key: string]: string } = {
+  31337:"0xF62eEc897fa5ef36a957702AA4a45B58fE8Fe312", 
+  31338:"0x8F28B6fF628D11A1f39c550A63D8BF73aD95d1d0", 
 };
 const CHAIN_BLOCKNUMBERS:{ [key: string]: bigint[] } = {
   31337: [44551689n], 
@@ -55,6 +70,9 @@ const Communication = buildModule("Communication", (m) => {
   const initialAmount = m.getParameter("initialAmount", ONE_GWEI);
   const chainBlockNumbers = m.getParameter("chainBlockNumbers", CHAIN_BLOCKNUMBERS[CURRENT_CHAIN_ID]);
   const allChainAddresses = m.getParameter("allChainAddresses", CHAIN_ALL_ADDRESSES[CURRENT_CHAIN_ID]);
+  const gameAddress = m.getParameter("gameAddress", GAME_ADDRESSES[CURRENT_CHAIN_ID]);
+  const outgoingCommunicationAddress = m.getParameter("outgoingCommunicationAddress", OUTGOING_COMMUNICATION_ADDRESS[CURRENT_CHAIN_ID]);
+  const incomingCommunicationAddress = m.getParameter("incomingCommunicationAddress", INCOMING_COMMUNICATION_ADDRESS[CURRENT_CHAIN_ID]);
 
   const verification = m.contract("Verification", 
     [chainIds, chainBlockNumbers, allChainAddresses], 
@@ -70,7 +88,11 @@ const Communication = buildModule("Communication", (m) => {
     { value: initialAmount }
   );
 
-  return { verification, incomingCommunication, outgoingCommunication };
+  const RockPaperScissorsGame = m.contract("RockPaperScissorsGame", 
+    [outgoingCommunicationAddress, incomingCommunicationAddress, gameAddress, chainIds], 
+  );
+
+  return { verification, incomingCommunication, outgoingCommunication, RockPaperScissorsGame };
 });
 
 export default Communication;

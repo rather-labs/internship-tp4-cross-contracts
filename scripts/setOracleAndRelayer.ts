@@ -6,8 +6,8 @@ import { hexToBytes, parseEther, toBytes, toHex } from "viem";
 const CURRENT_CHAIN_ID = (hre.network.config.chainId?? 0).toString();
 
 const VERIFICATION_ADDRESSES:{ [key: string]: string } = { // Verification contracts
-  31337:"0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7", 
-  31338:"0x6F422FcbfF104822D27DC5BFacC5C6FA7c32af77", 
+  31337:"0xF2cb3cfA36Bfb95E0FD855C1b41Ab19c517FcDB9", 
+  31338:"0x8e590b19CcD16282333c6AF32e77bCb65e98F3c9", 
 };
 async function main() {
     const [firstWalletClient, secondWalletClient] = await hre.viem.getWalletClients();

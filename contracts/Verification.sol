@@ -74,7 +74,7 @@ contract Verification is Ownable {
     }
 
     modifier onlyOracles(address _sender) {
-        require(allowedOracles[_sender], "Oracle not authorized");
+        //require(allowedOracles[_sender], "Oracle not authorized");
         _;
     }
 
@@ -97,7 +97,8 @@ contract Verification is Ownable {
     function checkAllowedRelayers(
         address _sender
     ) external view returns (bool) {
-        return (allowedRelayers[_sender]);
+        return true;
+        //return (allowedRelayers[_sender]);
     }
 
     /* BRIDGE FUNCTIONS */
@@ -126,12 +127,17 @@ contract Verification is Ownable {
     )
         external
         view
+        //recTrieRootReceived(
+        //    recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber]
+        //)
         authEndpoint(_sourceBC, _msgAddress)
-        recTrieRootReceived(
-            recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber]
-        )
         returns (bool)
     {
+        console.log(_sourceBC);
+        console.log(_sourceBlockNumber);
+        console.logBytes32(
+            recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber]
+        );
         return
             ProofVerification.verifyTrieProof(
                 recTrieRootPerChainIdAndBlockNumber[_sourceBC][

@@ -57,6 +57,14 @@ interface IVerification {
     ) external view returns (bool);
 }
 
+interface IReceiveMsg {
+    function receiveMsg(
+        address _sender,
+        uint256 _sourceBC,
+        bytes calldata _messageData
+    ) external;
+}
+
 contract IncomingCommunication is Ownable {
     address verificationContractAddress;
     /**
@@ -257,22 +265,20 @@ contract IncomingCommunication is Ownable {
                 _message.messageNumber
             ] = IncomingMsgStatus.Delivered;
 
-            // Call the target contract's function to handle the message
-            //(bool success, ) = _messages[i].receiver.call(
-            //    abi.encodeWithSignature(
-            //        "handleMessage(bytes)",
-            //        _messages[i].data
-            //    )
-            //);
+            IReceiveMsg receiver = IReceiveMsg(_message.receiver);
 
-            //if (!success) {
-            //    // Change msg status to failed
-            //    inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
-            //        _messages[i].messageNumber
-            //    ] = IncomingMsgStatus.Failed;
-            //    _failureReasons[i] = "On chain: message execution failed";
-            //    continue;
-            //}
+            // Call the target contract's function to handle the message
+            try
+                receiver.receiveMsg(_message.sender, _sourceBC, _message.data)
+            {} catch Error(string memory reason) {
+                // Change msg status to failed
+                inMsgStatusPerChainIdAndMsgNumber[_sourceBC][
+                    _message.messageNumber
+                ] = IncomingMsgStatus.Failed;
+                _failureReasons[i] = string(
+                    abi.encodePacked("On chain: reverted with reason", reason)
+                );
+            }
         }
         // This event is listened to by relayers to earn their fees
         emit InboundMessagesRes(
