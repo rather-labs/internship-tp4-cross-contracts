@@ -15,12 +15,11 @@ async function main() {
       GAME_CHAIN_ADDRESSES[CURRENT_CHAIN_ID],
     );
     // emits message
-    const transactionHash = await contract.write.startGame(
+    const transactionHash = await contract.write.submitMove(
       [
-        MetaMaskAddress,
-       31338n,
-       1,
-       1 // Move.Rock = 1
+        1n,
+        31337n,
+        1 // Move.Rock = 1
       ],
       {
         value: parseEther("100", "gwei"),

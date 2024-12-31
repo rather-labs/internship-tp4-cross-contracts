@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
+// For debugging -- Comment for deployment
+import "hardhat/console.sol";
 
 interface IOutgoingCommunication {
     function sendMessage(
@@ -323,7 +325,7 @@ contract RockPaperScissorsGame {
                 emit MoveReceived(_gameId, _gameSourceChainId, _move);
             }
             return;
-        } else if (data.length == 320) {
+        } else if (data.length == 352) {
             // Attempt to decode as a new game
             Game memory _game = abi.decode(data, (Game));
             if (games[_game.player1ChainID][_game.id].player1 != address(0)) {
