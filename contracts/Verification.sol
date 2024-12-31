@@ -6,7 +6,7 @@ import "./Rlp.sol";
 import "./ProofVerficitation.sol";
 
 // For debugging -- Comment for deployment
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 contract Verification is Ownable {
     /**
@@ -133,11 +133,6 @@ contract Verification is Ownable {
         authEndpoint(_sourceBC, _msgAddress)
         returns (bool)
     {
-        console.log(_sourceBC);
-        console.log(_sourceBlockNumber);
-        console.logBytes32(
-            recTrieRootPerChainIdAndBlockNumber[_sourceBC][_sourceBlockNumber]
-        );
         return
             ProofVerification.verifyTrieProof(
                 recTrieRootPerChainIdAndBlockNumber[_sourceBC][

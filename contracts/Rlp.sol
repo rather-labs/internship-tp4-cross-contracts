@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.8.0 <0.9.0;
 
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
 library RlpEncoding {
     /**
@@ -17,36 +17,33 @@ library RlpEncoding {
      */
     struct Receipt {
         bytes status;
-        bytes cumulativeGasUsed;
+        uint256 cumulativeGasUsed;
         bytes logsBloom;
         Log[] logs;
         bytes txType;
         bytes rlpEncTxIndex;
     }
 
-    // Function to convert a bytes array to uint8 array
-    function bytesToUint8Array(
-        bytes memory _bytes
-    ) internal pure returns (uint8[] memory) {
-        uint8[] memory result = new uint8[](_bytes.length);
-        for (uint i = 0; i < _bytes.length; i++) {
-            result[i] = uint8(_bytes[i]); // Convert each byte to uint8
+    function uintToCompactBytes(
+        uint256 value
+    ) public pure returns (bytes memory) {
+        // Count the number of non-zero bytes (start from the highest byte)
+        uint256 temp = value;
+        uint256 nonZeroLength = 0;
+
+        while (temp != 0) {
+            nonZeroLength++;
+            temp >>= 8; // Shift right by one byte
         }
+
+        // Create a bytes array of the required length
+        bytes memory result = new bytes(nonZeroLength);
+        for (uint256 i = 0; i < nonZeroLength; i++) {
+            result[nonZeroLength - 1 - i] = bytes1(uint8(value)); // Extract the least significant byte
+            value >>= 8; // Shift right by one byte
+        }
+
         return result;
-    }
-
-    function bytesToHex(
-        bytes memory _bytes
-    ) internal pure returns (string memory) {
-        bytes memory hexBytes = new bytes(_bytes.length * 2);
-        bytes16 hexSymbols = "0123456789abcdef";
-
-        for (uint i = 0; i < _bytes.length; i++) {
-            hexBytes[i * 2] = hexSymbols[uint8(_bytes[i] >> 4)]; // Get the higher nibble (first 4 bits)
-            hexBytes[i * 2 + 1] = hexSymbols[uint8(_bytes[i] & 0x0f)]; // Get the lower nibble (last 4 bits)
-        }
-
-        return string(hexBytes);
     }
 
     ///**
@@ -56,28 +53,31 @@ library RlpEncoding {
     // * @return RLP encoded bytes.
     // */
     function encodeLength(
-        uint len,
-        uint offset
+        uint256 length,
+        uint256 offset
     ) internal pure returns (bytes memory) {
-        bytes memory encoded;
-        if (len < 56) {
-            encoded = new bytes(1);
-            encoded[0] = bytes32(len + offset)[31];
+        if (length < 56) {
+            // If length is less than 56, use a single byte.
+            return abi.encodePacked(uint8(length + offset));
         } else {
-            uint lenLen;
-            uint i = 1;
-            while (len / i != 0) {
-                lenLen++;
-                i *= 256;
+            // If length is 56 or more, encode the length of the length.
+            uint256 tempLength = length;
+            uint256 lenLength = 0;
+            while (tempLength != 0) {
+                lenLength++;
+                tempLength >>= 8;
             }
 
-            encoded = new bytes(lenLen + 1);
-            encoded[0] = bytes32(lenLen + offset + 55)[31];
-            for (i = 1; i <= lenLen; i++) {
-                encoded[i] = bytes32((len / (256 ** (lenLen - i))) % 256)[31];
+            bytes memory lengthBytes = new bytes(lenLength);
+            for (uint256 i = 0; i < lenLength; i++) {
+                lengthBytes[lenLength - 1 - i] = bytes1(
+                    uint8(length >> (i * 8))
+                );
             }
+
+            return
+                abi.encodePacked(uint8(lenLength + offset + 55), lengthBytes);
         }
-        return encoded;
     }
 
     /**
@@ -88,29 +88,32 @@ library RlpEncoding {
     function encodeBytes(
         bytes memory byteString
     ) internal pure returns (bytes memory) {
-        bytes memory encoded;
         if (byteString.length == 1 && uint8(byteString[0]) < 128) {
-            encoded = byteString;
-        } else {
-            encoded = abi.encodePacked(
-                encodeLength(byteString.length, 128),
-                byteString
-            );
+            return byteString;
         }
-        return encoded;
+        return
+            abi.encodePacked(encodeLength(byteString.length, 128), byteString);
     }
 
     /**
      * @dev RLP encodes a list of RLP encoded byte byte strings.
-     * @param list The list of RLP encoded byte strings.
+     * @param list The list of RLP encoded byte strings or pure items.
+     * @param itemsRLPEncoded Whether the items are already RLP encoded.
      * @return The RLP encoded list of items in bytes.
      */
     function encodeList(
-        bytes[] memory list
+        bytes[] memory list,
+        bool itemsRLPEncoded
     ) internal pure returns (bytes memory) {
         bytes memory encoded;
-        for (uint i = 0; i < list.length; i++) {
-            encoded = abi.encodePacked(encoded, encodeBytes(list[i]));
+        if (itemsRLPEncoded) {
+            for (uint i = 0; i < list.length; i++) {
+                encoded = abi.encodePacked(encoded, list[i]);
+            }
+        } else {
+            for (uint i = 0; i < list.length; i++) {
+                encoded = abi.encodePacked(encoded, encodeBytes(list[i]));
+            }
         }
         return abi.encodePacked(encodeLength(encoded.length, 192), encoded);
     }
@@ -118,49 +121,26 @@ library RlpEncoding {
     function encodeReceipt(
         Receipt memory _receipt
     ) internal pure returns (bytes memory) {
-        bytes memory _encodedLogs;
-        bytes[] memory _encodedLog = new bytes[](3);
+        bytes[] memory _encodedLogs = new bytes[](_receipt.logs.length);
         for (uint i = 0; i < _receipt.logs.length; i++) {
+            bytes[] memory _encodedLog = new bytes[](3);
             _encodedLog[0] = encodeBytes(
                 abi.encodePacked(_receipt.logs[i].txAddress)
             );
-            _encodedLog[1] = encodeList(_receipt.logs[i].topics);
+            _encodedLog[1] = encodeList(_receipt.logs[i].topics, false);
             _encodedLog[2] = encodeBytes(_receipt.logs[i].data);
-            _encodedLogs = abi.encodePacked(
-                _encodedLogs,
-                encodeLength(
-                    _encodedLog[0].length +
-                        _encodedLog[1].length +
-                        _encodedLog[2].length,
-                    192
-                ),
-                _encodedLog[0],
-                _encodedLog[1],
-                _encodedLog[2]
-            );
+            _encodedLogs[i] = encodeList(_encodedLog, true);
         }
 
         bytes[] memory _receiptData = new bytes[](4);
         _receiptData[0] = encodeBytes(_receipt.status);
-        _receiptData[1] = encodeBytes(_receipt.cumulativeGasUsed);
+        _receiptData[1] = encodeBytes(
+            uintToCompactBytes(_receipt.cumulativeGasUsed)
+        );
         _receiptData[2] = encodeBytes(_receipt.logsBloom);
-        _receiptData[3] = abi.encodePacked(
-            encodeLength(_encodedLogs.length, 192),
-            _encodedLogs
-        );
-        bytes memory encodedReceipt = abi.encodePacked(
-            encodeLength(
-                _receiptData[0].length +
-                    _receiptData[1].length +
-                    _receiptData[2].length +
-                    _receiptData[3].length,
-                192
-            ),
-            _receiptData[0],
-            _receiptData[1],
-            _receiptData[2],
-            _receiptData[3]
-        );
+        _receiptData[3] = encodeList(_encodedLogs, true);
+
+        bytes memory encodedReceipt = encodeList(_receiptData, true);
 
         if (keccak256(_receipt.txType) != keccak256(hex"00")) {
             return abi.encodePacked(_receipt.txType, encodedReceipt);

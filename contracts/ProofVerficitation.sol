@@ -5,7 +5,7 @@ pragma solidity ^0.8.0;
 import "solidity-rlp/contracts/RLPReader.sol";
 
 // For debugging -- Comment for deployment
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
 library ProofVerification {
     using RLPReader for bytes;
@@ -32,12 +32,9 @@ library ProofVerification {
             bool isValid
         )
     {
-        // Step 1: Start with the root hash
+        // Start with the root hash
         bytes32 currentNodeHash = receiptsRoot;
-
-        //// Step 2: RLP-encode the transaction index (used as the key)
-        //bytes memory rlpEncodedIndex = RlpEncoding.encodeBytes(txIndex);
-        // Step 3: Traverse the proof nodes
+        // Traverse the proof nodes
         for (uint256 i = 0; i < proofNodes.length; i++) {
             bytes memory currentNode = proofNodes[i];
             // Hash the current node and ensure it matches the expected hash
@@ -49,17 +46,22 @@ library ProofVerification {
                 .toRlpItem()
                 .toList();
             if (nodeItems.length == 17) {
+                uint256 nibbleIndex = i / 2;
+                if (nibbleIndex >= rlpEncodedIndex.length) {
+                    return false; // Invalid index length
+                }
                 // Branch node: Use the current nibble of the key to find the next node
                 // Extract nibble based on current depth
-                uint8 nibble = uint8(rlpEncodedIndex[i / 2]);
-                if (i % 2 == 0) {
-                    nibble = nibble >> 4; // High nibble
-                } else {
-                    nibble = nibble & 0x0F; // Low nibble
+                uint8 nibble = uint8(rlpEncodedIndex[nibbleIndex]);
+                nibble = (i % 2 == 0) ? (nibble >> 4) : (nibble & 0x0F);
+                if (nibble >= 16) {
+                    return false; // Invalid nibble
                 }
-                currentNodeHash = nodeItems[nibble].toBytes().length > 0
-                    ? bytes32(nodeItems[nibble].toUint())
-                    : keccak256(abi.encodePacked(nodeItems[16].toBytes()));
+                RLPReader.RLPItem memory nextNode = nodeItems[nibble];
+                if (nextNode.len == 0) {
+                    return false; // Missing child node
+                }
+                currentNodeHash = bytes32(nextNode.toUint());
             } else if (nodeItems.length == 2) {
                 // Leaf node: Verify the encoded receipt
                 if (i == proofNodes.length - 1) {
@@ -73,7 +75,6 @@ library ProofVerification {
                 return false; // Invalid node structure
             }
         }
-
         return false; // Proof traversal failed
     }
 }

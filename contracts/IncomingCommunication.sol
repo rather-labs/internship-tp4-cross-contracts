@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 // For debugging -- Comment for deployment
-import "hardhat/console.sol";
+//import "hardhat/console.sol";
 
 interface IVerification {
     /**
@@ -34,7 +34,7 @@ interface IVerification {
      */
     struct Receipt {
         bytes status;
-        bytes cumulativeGasUsed;
+        uint256 cumulativeGasUsed;
         bytes logsBloom;
         Log[] logs;
         bytes txType;
@@ -297,7 +297,6 @@ contract IncomingCommunication is Ownable {
      * @notice Gets balance from address.
      */
     function getBalance() public view returns (uint256) {
-        console.log(address(this).balance);
         return address(this).balance;
     }
     // TODO: Function to add new supported BCs (require contract owner)
