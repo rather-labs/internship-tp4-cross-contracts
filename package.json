@@ -12,7 +12,8 @@
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-viem": "^3.0.0",
     "ethereum-cryptography": "^3.0.0",
-    "hardhat": "^2.22.16"
+    "hardhat": "^2.22.16",
+    "hardhat-contract-sizer": "^2.10.0"
   },
   "dependencies": {
     "@openzeppelin/contracts": "^5.1.0",

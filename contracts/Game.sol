@@ -38,7 +38,8 @@ contract RockPaperScissorsGame {
         Move player2Move;
         Result result;
         uint16 blocksForFinality;
-        uint256 bet;
+        uint256 player1Bet;
+        uint256 player2Bet;
     }
 
     mapping(uint256 => uint256) public gameCounter; //gameCounter for each game source chainID
@@ -81,6 +82,55 @@ contract RockPaperScissorsGame {
             "Invalid game contract address is sending a move"
         );
         _;
+    }
+
+    /**
+     * @notice Resolves the final transaction for the game.
+     * @param _gameSourceChainId The source chain ID of the game.
+     * @param _gameId The ID of the game.
+     */
+    function _resolveGame(
+        uint256 _gameSourceChainId,
+        uint256 _gameId
+    ) internal {
+        require(
+            games[_gameSourceChainId][_gameId].result != Result.Pending,
+            "Game not already resolved"
+        );
+        if (
+            block.chainid == _gameSourceChainId &&
+            games[_gameSourceChainId][_gameId].result == Result.Player1Wins
+        ) {
+            uint256 bet = games[_gameSourceChainId][_gameId].player1Bet;
+            games[_gameSourceChainId][_gameId].player1Bet = 0;
+            (bool success, ) = payable(
+                games[_gameSourceChainId][_gameId].player1
+            ).call{value: bet}("");
+            require(success, "Transfer failed");
+        } else if (
+            block.chainid != _gameSourceChainId &&
+            games[_gameSourceChainId][_gameId].result == Result.Player2Wins
+        ) {
+            uint256 bet = games[_gameSourceChainId][_gameId].player2Bet;
+            games[_gameSourceChainId][_gameId].player2Bet = 0;
+            (bool success, ) = payable(
+                games[_gameSourceChainId][_gameId].player2
+            ).call{value: bet}("");
+            require(success, "Transfer failed");
+        } //else if (games[_gameSourceChainId][_gameId].result != Result.Draw) {
+        //  address burnAddress = address(0);
+        //  if (block.chainid == _gameSourceChainId) {
+        //      uint256 bet = games[_gameSourceChainId][_gameId].player1Bet;
+        //      games[_gameSourceChainId][_gameId].player1Bet = 0;
+        //      (bool success, ) = payable(burnAddress).call{value: bet}("");
+        //      require(success, "Transfer failed");
+        //  } else {
+        //      uint256 bet = games[_gameSourceChainId][_gameId].player2Bet;
+        //      games[_gameSourceChainId][_gameId].player2Bet = 0;
+        //      (bool success, ) = payable(burnAddress).call{value: bet}("");
+        //      require(success, "Transfer failed");
+        //  }
+        //}
     }
 
     function _determineWinner(
@@ -212,7 +262,7 @@ contract RockPaperScissorsGame {
 
         if (
             games[_gameSourceChainId][_gameId].nMoves == 1 &&
-            games[_gameSourceChainId][_gameId].bet > msg.value
+            games[_gameSourceChainId][_gameId].player1Bet > msg.value
         ) {
             revert(
                 "The bet required to play the game is higher than the amount sent"
@@ -225,8 +275,10 @@ contract RockPaperScissorsGame {
             block.chainid == games[_gameSourceChainId][_gameId].player1ChainID
         ) {
             games[_gameSourceChainId][_gameId].player1Move = _move;
+            games[_gameSourceChainId][_gameId].player1Bet += msg.value;
         } else {
             games[_gameSourceChainId][_gameId].player2Move = _move;
+            games[_gameSourceChainId][_gameId].player2Bet += msg.value;
         }
         games[_gameSourceChainId][_gameId].nMoves++;
 
@@ -235,6 +287,7 @@ contract RockPaperScissorsGame {
             block.chainid == games[_gameSourceChainId][_gameId].player2ChainID
         ) {
             _determineWinner(_gameId, _gameSourceChainId);
+            _resolveGame(_gameId, _gameSourceChainId);
         }
 
         _sendMoveToCommunicationContract(_gameId, _gameSourceChainId);
@@ -262,7 +315,8 @@ contract RockPaperScissorsGame {
             player2Move: Move.None,
             result: Result.Pending,
             blocksForFinality: _blocksForFinality,
-            bet: msg.value
+            player1Bet: msg.value,
+            player2Bet: 0
         });
     }
 
@@ -323,6 +377,8 @@ contract RockPaperScissorsGame {
             games[_gameSourceChainId][_gameId].result = _result;
             if (_result == Result.Pending) {
                 emit MoveReceived(_gameId, _gameSourceChainId, _move);
+            } else {
+                _resolveGame(_gameId, _gameSourceChainId);
             }
             return;
         } else if (data.length == 352) {

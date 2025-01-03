@@ -1,5 +1,6 @@
 import { vars, type HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox-viem";
+import 'hardhat-contract-sizer';
 
 const ALCHEMY_PROJECT_ID = vars.get("ALCHEMY_PROJECT_ID");
 
