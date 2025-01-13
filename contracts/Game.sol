@@ -381,7 +381,7 @@ contract RockPaperScissorsGame {
                 _resolveGame(_gameId, _gameSourceChainId);
             }
             return;
-        } else if (data.length == 352) {
+        } else if (data.length == 384) {
             // Attempt to decode as a new game
             Game memory _game = abi.decode(data, (Game));
             if (games[_game.player1ChainID][_game.id].player1 != address(0)) {
@@ -397,6 +397,7 @@ contract RockPaperScissorsGame {
             }
             return;
         }
+        console.log("Unknown Message of length: %s", data.length);
         revert("Unknown Message");
     }
 }

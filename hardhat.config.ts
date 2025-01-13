@@ -15,6 +15,11 @@ const config: HardhatUserConfig = {
     //  viaIR: true,
     //},
   },
+  contractSizer: {
+    alphaSort: true, // Sort contracts alphabetically
+    runOnCompile: true, // Automatically measure size after compilation
+    disambiguatePaths: false, // Show file paths for contracts with the same name
+  },
   networks: {
     hardhat:{ 
       chainId: 31337,
