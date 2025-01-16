@@ -22,7 +22,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat:{ 
-      chainId: 31338,
+      chainId: 31_338,
       forking: { 
         url:"https://bnb-mainnet.g.alchemy.com/v2/"+ALCHEMY_PROJECT_ID,
         blockNumber: 44551689,
@@ -33,8 +33,8 @@ const config: HardhatUserConfig = {
       },
     },
     localhost: {
-      url: "http://localhost:8546",
-      chainId: 31338, // Default Hardhat network chain ID  (couldn't make it work with different chain id)
+        url: "http://localhost:8546",
+        chainId: 31_338, // Default Hardhat network chain ID 
     },
 },
 };

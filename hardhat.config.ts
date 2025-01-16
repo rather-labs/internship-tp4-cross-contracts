@@ -22,7 +22,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat:{ 
-      chainId: 31337,
+      chainId: 31_339,
       forking: { 
         url:"https://eth-mainnet.g.alchemy.com/v2/"+ALCHEMY_PROJECT_ID,
         blockNumber: 21322555,
@@ -33,8 +33,8 @@ const config: HardhatUserConfig = {
       },
     },
     localhost: {
-        url: 'http://localhost:8545',
-        chainId: 31337, // Default Hardhat network chain ID
+        url: 'http://localhost:8547',
+        chainId: 31_339, // Default Hardhat network chain ID
     },
   },
 };

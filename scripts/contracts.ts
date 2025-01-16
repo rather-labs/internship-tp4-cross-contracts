@@ -10,11 +10,11 @@ async function main() {
       "0x5fbdb2315678afecb367f032d93f642f64180aa3",
       //{client: firstWalletClient}
     );
-    let response = await contract.read.blocknumberPerChainId([31337n]);
+    let response = await contract.read.blocknumberPerChainId([31339n]);
     console.log(response)
     response = await contract.read.getBalance();
     console.log(response)
-    await contract.write.setLastBlock([31337n, 3n]);
+    await contract.write.setLastBlock([31339n, 3n]);
 }
 
 main()

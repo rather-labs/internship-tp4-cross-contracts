@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "start1": "npx hardhat node --port 8547 --config hardhat.config.ts",
+    "start2": "npx hardhat node --port 8546 --config hardhat2.config.ts",
+    "deploy": "npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat.config.ts && npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost --config ./hardhat.config.ts && npx hardhat run ./scripts/sendETHToMetaMask.ts --network localhost --config ./hardhat.config.ts && npx hardhat ignition deploy ./ignition/modules/Communication.ts  --network localhost --reset --config ./hardhat2.config.ts && npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost --config ./hardhat2.config.ts && npx hardhat run ./scripts/sendETHToMetaMask.ts --network localhost --config ./hardhat2.config.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -3,7 +3,7 @@ import { ContractTypesMap } from "hardhat/types/artifacts";
 import { decodeEventLog, hexToString, parseEther, toBytes, toHex } from "viem";
 const CURRENT_CHAIN_ID = (hre.network.config.chainId?? 0).toString();
 const OUT_CHAIN_ADDRESSES:{ [key: string]: string } = { // Outgoing communication contracts
-  31337:"0x364C7188028348566E38D762f6095741c49f492B", 
+  31339:"0x364C7188028348566E38D762f6095741c49f492B", 
   31338:"0x4B5f648644865DB820490B3DEee14de9DF7fFF39", 
 };
 async function main() {

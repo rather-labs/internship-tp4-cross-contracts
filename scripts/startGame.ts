@@ -3,7 +3,7 @@ import { ContractTypesMap } from "hardhat/types/artifacts";
 import { decodeEventLog, hexToString, parseEther, toBytes, toHex } from "viem";
 const CURRENT_CHAIN_ID = (hre.network.config.chainId?? 0).toString();
 const GAME_CHAIN_ADDRESSES:{ [key: string]: string } = { // Game contracts
-  31337:"0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7", 
+  31339:"0x5147c5C1Cb5b5D3f56186C37a4bcFBb3Cd0bD5A7", 
   31338:"0x6F422FcbfF104822D27DC5BFacC5C6FA7c32af77", 
 };
 
