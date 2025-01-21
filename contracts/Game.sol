@@ -95,7 +95,7 @@ contract RockPaperScissorsGame {
     ) internal {
         require(
             games[_gameSourceChainId][_gameId].result != Result.Pending,
-            "Game not already resolved"
+            " Game result not yet determined"
         );
         if (
             block.chainid == _gameSourceChainId &&
@@ -140,7 +140,7 @@ contract RockPaperScissorsGame {
         require(
             games[_gameSourceChainId][_gameId].player1Move != Move.None &&
                 games[_gameSourceChainId][_gameId].player2Move != Move.None,
-            "Game not finished"
+            "Game not finished. It must be finished before determining the winner"
         );
 
         if (
@@ -252,7 +252,7 @@ contract RockPaperScissorsGame {
         uint256 _gameId,
         uint256 _gameSourceChainId,
         Move _move
-    ) public payable {
+    ) external payable {
         require(_move != Move.None, "Invalid move");
 
         require(
@@ -269,7 +269,6 @@ contract RockPaperScissorsGame {
             );
         }
 
-        //In this case, we submit the move to a game that already has a first move so, it's the player2 move
         if (
             msg.sender == games[_gameSourceChainId][_gameId].player1 &&
             block.chainid == games[_gameSourceChainId][_gameId].player1ChainID
@@ -286,8 +285,8 @@ contract RockPaperScissorsGame {
             msg.sender == games[_gameSourceChainId][_gameId].player2 &&
             block.chainid == games[_gameSourceChainId][_gameId].player2ChainID
         ) {
-            _determineWinner(_gameId, _gameSourceChainId);
-            _resolveGame(_gameId, _gameSourceChainId);
+            _determineWinner(_gameSourceChainId, _gameId);
+            _resolveGame(_gameSourceChainId, _gameId);
         }
 
         _sendMoveToCommunicationContract(_gameId, _gameSourceChainId);
@@ -304,7 +303,7 @@ contract RockPaperScissorsGame {
     ) internal {
         gameCounter[_player1ChainID]++; //update the game counter for the source chain
 
-        games[block.chainid][gameCounter[block.chainid]] = Game({
+        games[_player1ChainID][gameCounter[_player1ChainID]] = Game({
             id: gameCounter[_player1ChainID],
             nMoves: 1,
             player1: _player1,
@@ -378,7 +377,7 @@ contract RockPaperScissorsGame {
             if (_result == Result.Pending) {
                 emit MoveReceived(_gameId, _gameSourceChainId, _move);
             } else {
-                _resolveGame(_gameId, _gameSourceChainId);
+                _resolveGame(_gameSourceChainId, _gameId);
             }
             return;
         } else if (data.length == 384) {
