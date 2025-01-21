@@ -1,6 +1,8 @@
 import { vars, type HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox-viem";
 import 'hardhat-contract-sizer';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const ALCHEMY_PROJECT_ID = vars.get("ALCHEMY_PROJECT_ID");
 
@@ -30,11 +32,19 @@ const config: HardhatUserConfig = {
       mining: {
         auto: true,
         interval: 15_000
-      },
+      }
+
     },
     localhost: {
         url: 'http://localhost:8547',
         chainId: 31_339, // Default Hardhat network chain ID
+    },
+    holesky: {
+      url: "https://eth-holesky.g.alchemy.com/v2/" + ALCHEMY_PROJECT_ID,
+      chainId: 17000,
+      accounts: {
+        mnemonic: process.env.MNEMONIC || "", // Ensure you have a valid mnemonic
+      },
     },
   },
 };
