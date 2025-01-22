@@ -262,7 +262,7 @@ contract RockPaperScissorsGame {
 
         if (
             games[_gameSourceChainId][_gameId].nMoves == 1 &&
-            games[_gameSourceChainId][_gameId].player1Bet > msg.value
+            games[_gameSourceChainId][_gameId].player2Bet > msg.value
         ) {
             revert(
                 "The bet required to play the game is higher than the amount sent"
@@ -277,7 +277,11 @@ contract RockPaperScissorsGame {
             games[_gameSourceChainId][_gameId].player1Bet += msg.value;
         } else {
             games[_gameSourceChainId][_gameId].player2Move = _move;
-            games[_gameSourceChainId][_gameId].player2Bet += msg.value;
+            if (games[_gameSourceChainId][_gameId].nMoves == 1) {
+                // The bet value for player 2 is fixed by player 1
+                // In subsequent moves, player 2 can further increase it's own bet
+                games[_gameSourceChainId][_gameId].player2Bet += msg.value;
+            }
         }
         games[_gameSourceChainId][_gameId].nMoves++;
 
@@ -299,7 +303,8 @@ contract RockPaperScissorsGame {
         address _player2,
         uint256 _player2ChainID,
         Move _move,
-        uint16 _blocksForFinality
+        uint16 _blocksForFinality,
+        uint256 _player2Bet
     ) internal {
         gameCounter[_player1ChainID]++; //update the game counter for the source chain
 
@@ -315,7 +320,7 @@ contract RockPaperScissorsGame {
             result: Result.Pending,
             blocksForFinality: _blocksForFinality,
             player1Bet: msg.value,
-            player2Bet: 0
+            player2Bet: _player2Bet
         });
     }
 
@@ -323,7 +328,8 @@ contract RockPaperScissorsGame {
         address _player2,
         uint256 _player2ChainID,
         Move _move,
-        uint16 _blocksForFinality
+        uint16 _blocksForFinality,
+        uint256 _player2Bet
     ) external payable {
         _createGame(
             msg.sender,
@@ -331,7 +337,8 @@ contract RockPaperScissorsGame {
             _player2,
             _player2ChainID,
             _move,
-            _blocksForFinality
+            _blocksForFinality,
+            _player2Bet
         );
         _sendGameToCommunicationContract(
             gameCounter[block.chainid],
