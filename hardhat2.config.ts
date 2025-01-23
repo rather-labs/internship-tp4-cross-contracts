@@ -7,13 +7,13 @@ const ALCHEMY_PROJECT_ID = vars.get("ALCHEMY_PROJECT_ID");
 const config: HardhatUserConfig = {
   solidity: {
     version:"0.8.27",
-    //settings: {
-    //  optimizer: {
-    //    enabled: true,
-    //    runs: 200,
-    //  },
-    //  viaIR: true,
-    //},
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+      viaIR: true,
+    },
   },
   contractSizer: {
     alphaSort: true, // Sort contracts alphabetically

@@ -276,7 +276,7 @@ contract IncomingCommunication is Ownable {
                     _message.messageNumber
                 ] = IncomingMsgStatus.Failed;
                 _failureReasons[i] = string(
-                    abi.encodePacked("On chain: reverted with reason", reason)
+                    abi.encodePacked("On chain: reverted with reason: ", reason)
                 );
             }
         }

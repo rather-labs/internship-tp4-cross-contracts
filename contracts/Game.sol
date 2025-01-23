@@ -34,6 +34,7 @@ contract RockPaperScissorsGame {
         uint256 player1ChainID;
         address player2;
         uint256 player2ChainID;
+        bytes32 player1MoveHash;
         Move player1Move;
         Move player2Move;
         Result result;
@@ -248,11 +249,19 @@ contract RockPaperScissorsGame {
         );
     }
 
+    /**
+     * @notice A player submits a move
+     * @param _gameId Information of delivery event.
+     * @param _gameSourceChainId Destination blockchain.
+     * @param _move Destination blockchain.
+     * @param _nonce Nonce to compute the hash of the move.
+     */
     function submitMove(
         uint256 _gameId,
         uint256 _gameSourceChainId,
-        Move _move
-    ) external payable {
+        Move _move,
+        uint256 _nonce
+    ) public payable {
         require(_move != Move.None, "Invalid move");
 
         require(
@@ -286,14 +295,33 @@ contract RockPaperScissorsGame {
         games[_gameSourceChainId][_gameId].nMoves++;
 
         if (
-            msg.sender == games[_gameSourceChainId][_gameId].player2 &&
-            block.chainid == games[_gameSourceChainId][_gameId].player2ChainID
+            msg.sender == games[_gameSourceChainId][_gameId].player1 &&
+            block.chainid == games[_gameSourceChainId][_gameId].player1ChainID
         ) {
+            require(
+                games[_gameSourceChainId][_gameId].player1MoveHash ==
+                    keccak256(abi.encodePacked(_move, _nonce)),
+                "Provided move doesn't match the hashed move in the game"
+            );
             _determineWinner(_gameSourceChainId, _gameId);
             _resolveGame(_gameSourceChainId, _gameId);
         }
 
         _sendMoveToCommunicationContract(_gameId, _gameSourceChainId);
+    }
+
+    /**
+     * @notice A player submits a move
+     * @param _gameId Information of delivery event.
+     * @param _gameSourceChainId Destination blockchain.
+     * @param _move Destination blockchain.
+     */
+    function submitMove(
+        uint256 _gameId,
+        uint256 _gameSourceChainId,
+        Move _move
+    ) external payable {
+        submitMove(_gameId, _gameSourceChainId, _move, 0);
     }
 
     // Function to create a new game
@@ -302,7 +330,7 @@ contract RockPaperScissorsGame {
         uint256 _player1ChainID,
         address _player2,
         uint256 _player2ChainID,
-        Move _move,
+        bytes32 _moveHash,
         uint16 _blocksForFinality,
         uint256 _player2Bet
     ) internal {
@@ -315,7 +343,8 @@ contract RockPaperScissorsGame {
             player1ChainID: _player1ChainID,
             player2: _player2,
             player2ChainID: _player2ChainID,
-            player1Move: _move, //player1 always makes the first move, assigned in the game creation
+            player1MoveHash: _moveHash, //player1 always makes the first move, assigned in the game creation
+            player1Move: Move.None,
             player2Move: Move.None,
             result: Result.Pending,
             blocksForFinality: _blocksForFinality,
@@ -327,7 +356,7 @@ contract RockPaperScissorsGame {
     function startGame(
         address _player2,
         uint256 _player2ChainID,
-        Move _move,
+        bytes32 _moveHash,
         uint16 _blocksForFinality,
         uint256 _player2Bet
     ) external payable {
@@ -336,7 +365,7 @@ contract RockPaperScissorsGame {
             block.chainid,
             _player2,
             _player2ChainID,
-            _move,
+            _moveHash,
             _blocksForFinality,
             _player2Bet
         );
@@ -373,6 +402,7 @@ contract RockPaperScissorsGame {
             if (games[_gameSourceChainId][_gameId].nMoves + 1 != _nMoves) {
                 revert("Non expected number of move");
             }
+            games[_gameSourceChainId][_gameId].nMoves++;
             // If the game is already created, we update the game with the new moves and the result
             // if it's a move to be received it will always be from player1
             if (block.chainid == _gameSourceChainId) {
@@ -387,7 +417,7 @@ contract RockPaperScissorsGame {
                 _resolveGame(_gameSourceChainId, _gameId);
             }
             return;
-        } else if (data.length == 384) {
+        } else if (data.length == 416) {
             // Attempt to decode as a new game
             Game memory _game = abi.decode(data, (Game));
             if (games[_game.player1ChainID][_game.id].player1 != address(0)) {
