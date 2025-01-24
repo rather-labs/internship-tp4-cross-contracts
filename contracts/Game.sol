@@ -50,7 +50,12 @@ contract RockPaperScissorsGame {
     address public incomingCommunicationContract;
     mapping(uint256 => address) public gameContractAddresses; //gameContractAddress per chainID
 
-    event MoveReceived(uint256 gameId, uint256 gameSourceChainId, Move move);
+    event MoveReceived(
+        uint256 gameId,
+        uint256 gameSourceChainId,
+        bytes32 player1MoveHash,
+        Move move
+    );
     event GameResult(Game finishedGame);
 
     constructor(
@@ -412,7 +417,12 @@ contract RockPaperScissorsGame {
             }
             games[_gameSourceChainId][_gameId].result = _result;
             if (_result == Result.Pending) {
-                emit MoveReceived(_gameId, _gameSourceChainId, _move);
+                emit MoveReceived(
+                    _gameId,
+                    _gameSourceChainId,
+                    games[_gameSourceChainId][_gameId].player1MoveHash,
+                    _move
+                );
             } else {
                 _resolveGame(_gameSourceChainId, _gameId);
             }
@@ -428,6 +438,7 @@ contract RockPaperScissorsGame {
                 emit MoveReceived(
                     _game.id,
                     _game.player1ChainID,
+                    _game.player1MoveHash,
                     _game.player1Move
                 );
             }
