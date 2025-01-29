@@ -43,7 +43,20 @@ const config: HardhatUserConfig = {
       url: "https://eth-holesky.g.alchemy.com/v2/" + ALCHEMY_PROJECT_ID,
       chainId: 17000,
       accounts: {
-        mnemonic: process.env.MNEMONIC || "", // Ensure you have a valid mnemonic
+        mnemonic: process.env.MNEMONIC,
+        path: "m/44'/60'/0'/0",
+        initialIndex: 1,
+        count: 10,
+      },
+    },
+    bsc_testnet: {
+      url: "https://bnb-testnet.g.alchemy.com/v2/" + ALCHEMY_PROJECT_ID,
+      chainId: 97,
+      accounts: {
+        mnemonic: process.env.MNEMONIC,
+        path: "m/44'/60'/0'/0",
+        initialIndex: 1,
+        count: 10,
       },
     },
   },

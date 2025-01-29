@@ -293,4 +293,12 @@ contract OutgoingCommunication is Ownable {
     function getBalance() public view returns (uint256) {
         return address(this).balance;
     }
+
+    function updateDestinationAddresses(uint256 _chainId, address _address) external onlyOwner {
+        destAddresesPerChainId[_chainId] = _address;
+    }
+
+    function updateVerificationContract(address _newAddress) external onlyOwner {
+        verificationContractAddress = _newAddress;
+    }
 }

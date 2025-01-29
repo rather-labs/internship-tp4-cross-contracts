@@ -166,6 +166,20 @@ npx hardhat run ./scripts/setOracleAndRelayer.ts --network localhost --config ./
 npx hardhat run ./scripts/emitMsg.ts --network localhost
 npx hardhat run ./scripts/emitMsg.ts --network localhost
 ```
+## Contract Addresses
+**HOLESKY**
+Communication#IncomingCommunication - 0x6c3bF781F5853A46cb62e2503f9E89E559e36dfB
+Communication#OutgoingCommunication - 0x6b3C11d20b1BB9556f86386ADfCB084f6F79Abad
+Communication#RockPaperScissorsGame - 0x3C57CAC009c14Fd018549821Ea585C7D0317e88d
+Communication#Verification - 0x6A3413ca4099968Afb87b0EfB8AA399fd57378f4
+
+**BNB_TESTNET**
+Communication#IncomingCommunication - 0xD1313699Af6AC5F35619080583215057c5653E7F
+Communication#OutgoingCommunication - 0xeD55769F96C9BA7A14dFbCc0D8a13Cc73D42B095
+Communication#RockPaperScissorsGame - 0xa40f362263E81891293b7bD08DF6782Ff37E424b
+Communication#Verification - 0x0857ffDCEDc623b5b5E21a39A5A854bAF34EEbA2
+
+
 
 ## TODO
 

@@ -224,4 +224,14 @@ contract Verification is Ownable {
     ) public onlyOracles(msg.sender) {
         blocknumberPerChainId[_blockchain] = _blocknumber;
     }
+
+    function updateChainBlockNumbers(uint256 _chainId, uint256 _blockNumber) external onlyOwner {
+        blocknumberPerChainId[_chainId] = _blockNumber;
+    }
+
+    function updateChainAddresses(uint256 _chainId, address[] memory _addresses, bool _isAllowed) external onlyOwner {
+        for (uint i = 0; i < _addresses.length; i++) {
+            addressesPerChainId[_chainId][_addresses[i]] = _isAllowed;
+        }
+    }
 }
