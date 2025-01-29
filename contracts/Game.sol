@@ -2,6 +2,8 @@
 pragma solidity ^0.8.0;
 // For debugging -- Comment for deployment
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
 
 interface IOutgoingCommunication {
     function sendMessage(
@@ -13,7 +15,7 @@ interface IOutgoingCommunication {
     ) external payable;
 }
 
-contract RockPaperScissorsGame {
+contract RockPaperScissorsGame is Ownable {
     enum Move {
         None,
         Rock,
@@ -57,7 +59,7 @@ contract RockPaperScissorsGame {
         address _incomingCommunicationContract,
         address[] memory _gameContractAddresses,
         uint256[] memory _chainIDs
-    ) {
+    ) Ownable(msg.sender) {
         outgoingCommunicationContract = _outgoingCommunicationContract;
         incomingCommunicationContract = _incomingCommunicationContract;
         for (uint256 i = 0; i < _gameContractAddresses.length; i++) {
@@ -405,5 +407,17 @@ contract RockPaperScissorsGame {
         }
         console.log("Unknown Message of length: %s", data.length);
         revert("Unknown Message");
+    }
+
+    function updateGameContractAddress(uint256 _chainId, address _address) external onlyOwner {
+        gameContractAddresses[_chainId] = _address;
+    }
+
+    function updateOutgoingCommunicationContract(address _newAddress) external onlyOwner {
+        outgoingCommunicationContract = _newAddress;
+    }
+
+    function updateIncomingCommunicationContract(address _newAddress) external onlyOwner {
+        incomingCommunicationContract = _newAddress;
     }
 }

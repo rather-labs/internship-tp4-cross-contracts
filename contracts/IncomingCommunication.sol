@@ -301,4 +301,12 @@ contract IncomingCommunication is Ownable {
     }
     // TODO: Function to add new supported BCs (require contract owner)
     // TODO: Function to deposit/withdraw funds from contract (require contract owner)
+
+    function updateSourceAddresses(uint256 _chainId, address _address) external onlyOwner {
+        sourceAddresesPerChainId[_chainId] = _address;
+    }
+
+    function updateVerificationContract(address _newAddress) external onlyOwner {
+        verificationContractAddress = _newAddress;
+    }
 }
